@@ -2,7 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [v0.6.3] - 2026-10-13
+
+### Stability & Reliability
+
+* **Relapse defuse: transient sysctl-window failures no longer kill the run.**
+  The window the slow kernel path uses drops the occasional read or write
+  (measured live on 13.60: ~1 drop per run in ~600 window ops), and a single
+  dropped op left an armed AIO group unverifiable — which the defuse counted
+  as a skip, failing the whole gate and demanding a reboot. That was the
+  "casi siempre falla en checking AIO groups" failure mode. Every defuse
+  access is now retried with a forced full window re-aim (10 ms apart, 3
+  attempts); a failure that persists through all attempts is still returned,
+  so the verdict stays conservative. A failed head read can no longer be
+  mistaken for an already-clear group (`rv` is checked before the
+  already-clear accounting), and the sweep prints one progress line per
+  armed group so a moving defuse never looks like a frozen page.
+
+### Default payload chain
+
+* **Default payload chain for unconfigured consoles.** When no
+  `autoload.txt` exists, the autoloader now runs a built-in chain —
+  kstuff-lite and ShadowMountPlus (each always fetched from its official
+  release at build time), then the vendored etaHEN with its config template
+  installed if missing (built-in FTP on port 1337, FPS meter off; an
+  existing config is never touched) — each spaced 5 seconds apart, and
+  finally Payload Manager as the manager UI. The unified autoloader ELF is
+  now built locally from the vendored sources instead of downloaded from an
+  upstream release.
 
 ## [v0.6.2] - 2026-10-12
 

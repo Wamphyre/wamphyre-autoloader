@@ -2,6 +2,9 @@
 *.elf
 *.bin
 *.o
+# The vendored etaHEN is a repo asset, not a build output: no public release
+# exists to download it from, so the default chain builds from this copy.
+!payloads/default/*.elf
 
 # Generated installer registry, version and metadata
 include/file_registry.h
@@ -22,6 +25,12 @@ wamphyre-autoloader-host_v*.py
 wamphyre-autoloader-host.exe
 wamphyre-autoloader-host_v*.exe
 wamphyre-autoloader-host.spec
+
+# Generated embed arrays and staged default-chain payloads (built by
+# payload-deps / make autoload-elf, never edited by hand)
+third_party/ps5-unified-autoloader/payloads/
+third_party/ps5-unified-autoloader/*_elf.c
+third_party/ps5-unified-autoloader/etahen_config.c
 
 # OS / Python / logs / local references
 .DS_Store

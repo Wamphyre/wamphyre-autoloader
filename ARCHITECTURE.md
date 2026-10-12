@@ -200,11 +200,17 @@ they have no payload `api`. Inline assets needed during offline startup. This
 keeps appearance changes in CSS/JS files here instead of rewriting generated HTML
 or changing the exploit sources.
 
-`tools/download_deps.sh` downloads the pinned itsPLK elfldr and unified-autoloader
-release assets, caching verified digest sidecars. kexp is the binary bundled by
-remote-loader. The vendored trees are plain directories (this fork does not use
-git submodules): remote-loader's nested copy of this repository is not a build
-input.
+`tools/download_deps.sh` downloads the pinned itsPLK elfldr and Payload Manager
+release assets plus the **latest** kstuff-lite and ShadowMountPlus releases,
+caching verified digest sidecars in `build/deps/` for offline rebuilds, then
+stages the default chain under `third_party/ps5-unified-autoloader/payloads/`.
+The unified autoloader ELF is **built locally** (`make autoload-elf`) from the
+vendored sources — it is no longer downloaded from an upstream release — so it
+can embed the default chain: latest kstuff-lite and ShadowMountPlus, the
+vendored etaHEN (`payloads/default/`) with its config template, and Payload
+Manager as the manager UI. kexp is the binary bundled by remote-loader. The
+vendored trees are plain directories (this fork does not use git submodules):
+remote-loader's nested copy of this repository is not a build input.
 
 `build_release.sh` pins `BUILD_VERSION` once across Docker, HTML/cache generation,
 and PC host packaging, then writes versioned ELF/Python artifacts. GitHub Actions

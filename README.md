@@ -24,7 +24,8 @@ Wamphyre Autoloader is built to make that path impossible:
 - **It never interrupts a kernel exploit mid-flight.** Automatic recovery reloads only happen before the kernel is touched, or after the run has fully finished — never during the race. Even a countdown that was already running is cancelled the moment the kernel stage starts.
 - **Fully offline, no third-party DNS.** WebKit exploits are usually loaded by pointing your PS5's DNS at some server hosted by someone on the internet — you're putting your trust in whoever runs that server, and if it goes down, changes, or disappears, your setup breaks. After a one-time install from your PC, everything here is served straight from your PS5: there's nothing external to go down or change behind your back.
 - **One-time setup, then a homescreen shortcut.** Once it's installed, you don't need a PC or the internet — just launch "Wamphyre Autoloader" from the homescreen and you're done.
-- **Payloads loaded the way you already know.** After the exploit chain runs, your payloads are sent just like in [Y2JB](https://github.com/itsPLK/ps5-y2jb-autoloader) / [BD-JB](https://github.com/itsPLK/ps5-bdjb-autoloader) / [Lua](https://github.com/itsPLK/ps5-lua-autoloader) autoloaders — via **Payload Manager**, or a custom `autoload.txt`.
+- **A sane default chain out of the box.** With nothing configured, a fresh boot goes straight to a working setup: kstuff-lite and ShadowMountPlus (each always built from the latest official release), then etaHEN with its FTP server on port 1337 and the FPS meter off — and Payload Manager on top as the manager UI.
+- **Payloads loaded the way you already know.** After the exploit chain runs, your payloads are sent just like in [Y2JB](https://github.com/itsPLK/ps5-y2jb-autoloader) / [BD-JB](https://github.com/itsPLK/ps5-bdjb-autoloader) / [Lua](https://github.com/itsPLK/ps5-lua-autoloader) autoloaders — via the **default chain** above, or a custom `autoload.txt`.
 
 Exactly how each kind of failure is classified — and which ones retry themselves — is described in *"What happens if the exploit fails?"* below.
 
@@ -53,13 +54,21 @@ If you aren't jailbroken yet, you'll need to host the exploit locally on your PC
 
 There are two ways to configure payloads:
 
-### 🟢 Option 1: Payload Manager
+### 🟢 Option 1: The default chain (nothing to configure)
 
-If no `autoload.txt` config is found, the autoloader will automatically launch **[Payload Manager](https://github.com/itsPLK/ps5-payload-manager)** — a fully-featured PS5 payload manager with a web UI. This lets you configure and send payloads directly from your browser, without needing to manually set up config files or transfer ELF files ahead of time.
+If no `autoload.txt` config is found, the autoloader runs its **built-in default chain** before starting **[Payload Manager](https://github.com/itsPLK/ps5-payload-manager)** — a fully-featured PS5 payload manager with a web UI:
 
-Just run the autoloader — if there's nothing configured, Payload Manager starts automatically.
+1. **kstuff-lite** — always the latest release from [EchoStretch/kstuff-lite](https://github.com/EchoStretch/kstuff-lite), fetched at build time
+2. *5 second settle delay*
+3. **ShadowMountPlus** — always the latest release from [drakmor/ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus), fetched at build time
+4. *5 second settle delay*
+5. **etaHEN** — vendored in this repository (`payloads/default/etaHEN.elf`), with its config template installed on first run (built-in **FTP on port 1337**, **FPS meter off**). An existing `/data/etaHEN/config.ini` is never touched.
+6. *5 second settle delay*
+7. **Payload Manager** — available as the manager UI for everything else
 
-> **Note:** Payload Manager also has its own built-in autoload feature, which lets you configure payloads to load automatically on startup — all managed through its web UI. This is separate from the `autoload.txt` mechanism described below.
+The default chain only runs when no `autoload.txt` exists anywhere: creating one always takes over completely.
+
+> **Note:** If you also enable Payload Manager's own autoload feature with the same payloads, they will be loaded twice. Pick one place to own your startup chain.
 
 ---
 
@@ -112,6 +121,15 @@ The autoloader page watches its own run and reacts to failures:
   itself with an automatic reload. Once the kernel stage has started, the page
   never interrupts it — even a reload that was already counting down is
   cancelled the moment the kernel exploit starts.
+* **The AIO defuse shows its own progress.** During the kernel stage, the
+  `checking aio groups: 1/3…3/3` lines mean the armed AIO groups are being
+  swept and cleared one group at a time — the sweep can take a few seconds
+  per group and those lines are what proves it is moving, not frozen. Do not
+  power-cycle the console while they are appearing: the sweep is part of the
+  kernel exploit, and interrupting it is exactly the unknown-kernel-state
+  scenario the reboot demand exists for. Transient failures of the slow
+  kernel window are retried inside the sweep, so a single dropped read/write
+  no longer fails the run.
 * **Relapse needs a network connection** (Ethernet or Wi-Fi — no Internet
   access required): its kernel-base leak uses a local network interface. The
   autoloader checks this before starting and tells you clearly if it is
@@ -164,32 +182,38 @@ The upstream projects this fork builds on (`ps5-webkit-remote-loader`, `ps5-elfl
 ### Build from source (no Docker)
 
 The release pipeline (`./build_release.sh`) builds inside the
-`wamphyre-autoloader-sdk` Docker image, but the installer ELF also builds
-directly against a local [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk) (v0.44 was used for the current binaries):
+`wamphyre-autoloader-sdk` Docker image, but everything also builds directly
+against a local [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk)
+(v0.44 was used for the current binaries). The SDK is a set of wrappers around
+your system's LLVM, so the host needs `llvm-config`, `clang` and `lld`
+(Debian: `apt install llvm-19 clang-19 lld-19`).
 
 ```sh
-# 1. Get the prebuilt SDK and unzip it anywhere (this example: ~/ps5-payload-sdk)
-curl -L -o sdk.zip https://github.com/ps5-payload-dev/sdk/releases/download/v0.44/ps5-payload-sdk.zip
-unzip sdk.zip && mv ps5-payload-sdk ~/ps5-payload-sdk
+# 1. Get the prebuilt SDK and unzip it at /opt/ps5-payload-sdk (the Makefile
+#    default; override any target with SDK=/path/to/ps5-payload-sdk)
+sudo unzip ps5-payload-sdk.zip -d /opt && sudo mv /opt/ps5-payload-sdk* /opt/ps5-payload-sdk
 
-# 2. Build libmicrohttpd 1.0.1 for the PS5 target (same steps as tools/build_deps.sh)
-export PATH="$HOME/ps5-payload-sdk/bin:$PATH"
+# 2. Build libmicrohttpd 1.0.1 for the PS5 target (same steps as the loader's build_deps.sh)
+export PATH="/opt/ps5-payload-sdk/bin:$PATH"
 export CC=prospero-clang AR=prospero-ar RANLIB=prospero-ranlib
 wget https://ftp.gnu.org/gnu/libmicrohttpd/libmicrohttpd-1.0.1.tar.gz
 tar xf libmicrohttpd-1.0.1.tar.gz && cd libmicrohttpd-1.0.1
 ./configure --host=x86_64-pc-freebsd12 --disable-shared --enable-static \
-            --disable-curl --disable-examples --prefix="$HOME/ps5-payload-sdk/target"
+            --disable-curl --disable-examples --prefix="/opt/ps5-payload-sdk/target"
 make install && cd ..
 
-# 3. Build the installer ELF (command-line SDK overrides the Makefile default)
-make all SDK="$HOME/ps5-payload-sdk"
+# 3. Build everything. `make all` first runs payload-deps, which fetches the
+#    pinned elfldr and Payload Manager plus the LATEST kstuff-lite and
+#    ShadowMountPlus releases, then builds the unified autoloader ELF locally
+#    so it embeds the default chain (etaHEN is vendored in payloads/default/).
+BUILD_TYPE=stable make all
 ```
 
 Release-style artifacts with pinned versions:
 
 ```sh
 export BUILD_VERSION="$(python3 tools/gen_version.py --print)"
-make clean && make all SDK="$HOME/ps5-payload-sdk"
+make clean && BUILD_TYPE=stable make all SDK="$HOME/ps5-payload-sdk"
 mv installer.elf "wamphyre-autoloader-installer_v${BUILD_VERSION}.elf"
 make host HOST_PAYLOAD="wamphyre-autoloader-installer_v${BUILD_VERSION}.elf" SDK="$HOME/ps5-payload-sdk"
 mv wamphyre-autoloader-host.py "wamphyre-autoloader-host_v${BUILD_VERSION}.py"
@@ -204,6 +228,9 @@ and `make dev` for a local page preview. See
 
 * **[jordyidk](https://github.com/jordyidk)** & contributors — [slopkit (Poops)](https://github.com/jordyidk/slopkit)
 * **[soniciso1](https://github.com/soniciso1)**, **[ntfargo](https://github.com/ntfargo)** & contributors — [Relapse](https://github.com/soniciso1/relapse)
+* **[EchoStretch](https://github.com/EchoStretch)** & contributors — [kstuff-lite](https://github.com/EchoStretch/kstuff-lite) (default chain)
+* **[drakmor](https://github.com/drakmor)** & contributors — [ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus) (default chain)
+* The etaHEN authors & contributors — etaHEN (vendored for the default chain)
 * **[john-tornblom](https://github.com/john-tornblom)** — [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk/) and [elfldr](https://github.com/ps5-payload-dev/elfldr)
 * See [ps5-webkit-remote-loader](https://github.com/itsPLK/ps5-webkit-remote-loader) for runtime and toolchain credits.
 * Everyone else contributing to the PS5 homebrew scene.

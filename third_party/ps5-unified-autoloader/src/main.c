@@ -8,11 +8,13 @@
  *   4. Wait for elfldr to be ready on port 9021
  *   5. Scan USB0-7, then /data for autoload.txt
  *   6a. If found: iterate lines, launch each .elf from the config directory
- *   6b. If not found: send embedded pldmgr.elf to elfldr (fallback)
+ *   6b. If not found: run the default chain (kstuff-lite, ShadowMountPlus,
+ *       etaHEN with its config ensured) and then Payload Manager
  */
 
 #include "autoloader.h"
 #include "app_killer.h"
+#include "default_chain.h"
 #include "launcher.h"
 #include "notification.h"
 
@@ -23,15 +25,6 @@
 #include <unistd.h>
 
 #include "sync.h"
-
-/*
- * pldmgr.elf is embedded at build time via:
- *   xxd -i pldmgr.elf > pldmgr_elf.c
- * which generates:
- *   unsigned char pldmgr_elf[] = { ... };
- *   unsigned int  pldmgr_elf_len = ...;
- */
-#include "pldmgr_elf.c"
 
 /* -----------------------------------------------------------------------
  * find_autoload_config
@@ -236,12 +229,10 @@ int main(void) {
         autoloader_notify("Found autoload config:\n%s", config_path);
         run_autoload_sequence(config_path);
     } else {
-        /* Step 6b: no config — fall back to embedded pldmgr */
-        printf("[autoloader] No autoload config found. Starting Payload Manager...\n");
-        fflush(stdout);
-        if (launch_elf_from_memory(pldmgr_elf, pldmgr_elf_len) != 0) {
-            autoloader_notify("ERROR: failed to launch Payload Manager");
-            printf("[autoloader] ERROR: failed to launch pldmgr\n");
+        /* Step 6b: no config — run the default chain, which ends with
+         * Payload Manager as the manager UI. */
+        if (run_default_chain() != 0) {
+            printf("[autoloader] default chain reported errors\n");
             fflush(stdout);
             return -1;
         }

