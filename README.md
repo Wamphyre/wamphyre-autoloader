@@ -16,13 +16,17 @@ only failures the exploit itself vouches for are retried; dirty or interrupted r
 
 ## Why Wamphyre Autoloader?
 
-WebKit exploits are usually loaded by pointing your PS5's DNS at some server hosted by someone on the internet. That means you're putting your trust in whoever runs that server — and if it goes down, changes, or disappears, your setup breaks.
+The real purpose of this fork is not convenience — it is keeping your console alive. A failed kernel exploit by itself is harmless: you simply try again. The damage starts when a second attempt is fired over a kernel the first run left half-modified. That is what panics the console, and a panic in the middle of a kernel exploit is what ends in a **Rebuild Database** on the next boot — or, in the worst case, a **full format** that takes your games and saves with it.
 
-This autoloader does it differently:
+Wamphyre Autoloader is built to make that path impossible:
 
-- **Fully offline, no third-party DNS.** After a one-time install from your PC, everything is served straight from your PS5. There's nothing external to go down or change behind your back.
+- **It refuses to re-exploit a kernel nobody can vouch for.** Every run is watched and its outcome recorded: only a failure the exploit itself verified as clean — or one that never touched the kernel at all — is retried automatically. Anything dirty, interrupted or silent demands a reboot instead, and that refusal is remembered until you reboot. Rebooting is always cheaper than rebuilding.
+- **It never interrupts a kernel exploit mid-flight.** Automatic recovery reloads only happen before the kernel is touched, or after the run has fully finished — never during the race. Even a countdown that was already running is cancelled the moment the kernel stage starts.
+- **Fully offline, no third-party DNS.** WebKit exploits are usually loaded by pointing your PS5's DNS at some server hosted by someone on the internet — you're putting your trust in whoever runs that server, and if it goes down, changes, or disappears, your setup breaks. After a one-time install from your PC, everything here is served straight from your PS5: there's nothing external to go down or change behind your back.
 - **One-time setup, then a homescreen shortcut.** Once it's installed, you don't need a PC or the internet — just launch "Wamphyre Autoloader" from the homescreen and you're done.
 - **Payloads loaded the way you already know.** After the exploit chain runs, your payloads are sent just like in [Y2JB](https://github.com/itsPLK/ps5-y2jb-autoloader) / [BD-JB](https://github.com/itsPLK/ps5-bdjb-autoloader) / [Lua](https://github.com/itsPLK/ps5-lua-autoloader) autoloaders — via **Payload Manager**, or a custom `autoload.txt`.
+
+Exactly how each kind of failure is classified — and which ones retry themselves — is described in *"What happens if the exploit fails?"* below.
 
 
 ## Setup Instructions
@@ -216,14 +220,3 @@ This project is licensed under the GPL-3.0 License.
 ## Donate
 - [donate to PLK](DONATE.md)
 
-## Star History
-
-Star history of the upstream project this fork is based on:
-
-<a href="https://www.star-history.com/?repos=itsplk%2Fps5-webkit-autoloader&type=date&releases=&legend=bottom-right">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=itsplk/ps5-webkit-autoloader&type=date&theme=dark&legend=bottom-right" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=itsplk/ps5-webkit-autoloader&type=date&legend=bottom-right" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=itsplk/ps5-webkit-autoloader&type=date&legend=bottom-right" />
- </picture>
-</a>
