@@ -27,10 +27,15 @@ function noSocketSendBlob(bytes) {
 
 // Run { name, source, args } entries; report failures and continue unless the
 // current payload explicitly requests api.stopQueue(). Finish its cleanup first.
-export async function runPayloadQueue({ p, chain, payloads, onPayload }) {
+// payloadTimeoutMs overrides the per-payload deadline (tests pass a short one;
+// the page uses the 10-minute default).
+export async function runPayloadQueue({ p, chain, payloads, onPayload, payloadTimeoutMs }) {
   const say = screenLog;
   const queue = Array.isArray(payloads) ? payloads : [];
   const state = createSessionState(p, chain);
+  const timeoutMs = Number.isInteger(payloadTimeoutMs) && payloadTimeoutMs > 0
+    ? payloadTimeoutMs
+    : PAYLOAD_TIMEOUT_MS;
 
   say(`standalone runner v${LOADER_VERSION}: ${queue.length} payload(s) inline, no socket`, "success");
   if (queue.length === 0) {
@@ -82,7 +87,7 @@ export async function runPayloadQueue({ p, chain, payloads, onPayload }) {
     try {
       outcome = await withDeadline(
         executePayload({ code: entry.source, size, api, log: api.log, say, servedCount: i + 1 }),
-        PAYLOAD_TIMEOUT_MS,
+        timeoutMs,
         (ms) => say(`payload has run for ${ms / 1000}s and has not returned`, "error"),
         (reset) => { deadlineControl.reset = reset; },
       );
@@ -98,6 +103,18 @@ export async function runPayloadQueue({ p, chain, payloads, onPayload }) {
       failed++;
     } else {
       run++;
+    }
+
+    if (outcome === "overran") {
+      // The deadline ended the WAIT, not the payload: it raced a promise, so
+      // the payload may still be executing on the hijacked worker. Running
+      // the next payload alongside a live one -- a kernel exploit over an
+      // autoload that is still transferring, or a second stage over the
+      // first -- is exactly the overlap this one-at-a-time queue exists to
+      // prevent, and whatever the straggler does next cannot be predicted
+      // from here. Stop the queue instead of continuing.
+      stopped = true;
+      stopReason = `${label} ran for ${timeoutMs / 1000}s without returning and may still be running`;
     }
 
     if (stopped) {

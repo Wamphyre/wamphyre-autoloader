@@ -5,7 +5,7 @@
 &nbsp;
 <p align="center">Automatically loads the WebKit exploit and your elf payloads.<br>Supports firmwares <b>7.00&ndash;13.60</b>.</p>
 <p align="center">A hardening fork of PLK's <a href="https://github.com/itsPLK/ps5-webkit-autoloader">ps5-webkit-autoloader</a>:
-clean failures retry themselves, dirty or interrupted runs refuse to re-exploit and demand a reboot.</p>
+only failures the exploit itself vouches for are retried; dirty or interrupted runs refuse to re-exploit and demand a reboot.</p>
 
 <p align="center">
     <b>Other Autoloaders:</b><br>
@@ -82,24 +82,32 @@ For a fixed, automated payload chain, you can configure payloads manually:
 The autoloader page watches its own run and reacts to failures:
 
 * **Clean failures retry themselves.** If the chain fails without leaving
-  anything modified in the kernel (a lost race that cleaned up after itself, a
-  transient transfer error, a wedged WebKit stage before any kernel contact),
+  anything modified in the kernel — a lost race that cleaned up after itself,
+  a transient transfer error, a wedged WebKit stage before any kernel contact —
   the page reloads automatically and re-runs the whole chain — up to 3 times
-  per session, with a visible countdown. Most one-off failures resolve here
-  without you doing anything.
+  per session, with a visible countdown. The exploit has to vouch for that
+  with an explicit clean verdict of its own (both chains print one at the end
+  of their cleanup), so a failure that says nothing about the kernel state is
+  never assumed to be clean. Most one-off failures resolve here without you
+  doing anything.
 * **Dirty failures demand a reboot.** If the run leaves the kernel modified or in
   an unknown state (the exploit's own cleanup checks fail, or its verdict says
   so), the page refuses to re-exploit and tells you to reboot instead. This
   refusal is remembered: until the console is rebooted, launching the
   autoloader again shows the same reboot demand instead of firing the kernel
   exploit a second time over a kernel nobody can vouch for — that second run is
-  what turns a failed attempt into a crash.
+  what turns a failed attempt into a crash. A late success message can never
+  undo this verdict once the run is dirty.
 * **Interrupted runs are treated as dirty.** If the page is closed or dies while
   the kernel exploit is in flight, the next launch also refuses and asks for a
-  reboot, because the kernel's state after an interrupted run is unknown.
+  reboot, because the kernel's state after an interrupted run is unknown. A
+  payload that hangs is the same: its queue deadline only ends the wait, so the
+  queue stops rather than running the next payload alongside one that may
+  still be executing.
 * If the page freezes before the kernel stage is ever reached, it recovers
   itself with an automatic reload. Once the kernel stage has started, the page
-  never interrupts it.
+  never interrupts it — even a reload that was already counting down is
+  cancelled the moment the kernel exploit starts.
 * **Relapse needs a network connection** (Ethernet or Wi-Fi — no Internet
   access required): its kernel-base leak uses a local network interface. The
   autoloader checks this before starting and tells you clearly if it is
@@ -183,8 +191,8 @@ make host HOST_PAYLOAD="wamphyre-autoloader-installer_v${BUILD_VERSION}.elf" SDK
 mv wamphyre-autoloader-host.py "wamphyre-autoloader-host_v${BUILD_VERSION}.py"
 ```
 
-Run `make test` for the offline checks (payload, orchestrator, installer, and
-exploit-selection flow), `make page` to regenerate the standalone chain pages,
+Run `make test` for the offline checks (payload, queue, orchestrator, installer,
+and exploit-selection flow), `make page` to regenerate the standalone chain pages,
 and `make dev` for a local page preview. See
 [ARCHITECTURE.md](ARCHITECTURE.md) for the build and cache layout.
 

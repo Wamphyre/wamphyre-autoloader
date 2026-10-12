@@ -200,6 +200,40 @@ console.log("standalone queue runner (protocol + control flow, NOT the ROP chain
     `run=${summary.run} failed=${summary.failed}`);
 }
 
+// --- 3b. a payload timeout stops the queue, it does not move on ----------
+//
+// withDeadline races the payload against a clock; it does not cancel it. An
+// overran payload may still be executing on the hijacked worker, so running the
+// next payload alongside it is the uncontrolled overlap this queue exists to
+// prevent. The overrun must stop the queue.
+{
+  const { p, chain } = makeFake();
+  clear();
+  const summary = await runPayloadQueue({
+    p, chain,
+    payloadTimeoutMs: 40,
+    payloads: [
+      { name: "hangs.js", source: `return async function (api) {
+        await api.log("hanging payload started");
+        await new Promise(() => {}); // never resolves, keeps no timers alive
+      };` },
+      { name: "after.js", source: `return async function (api) {
+        await api.log("must not execute");
+      };` },
+    ],
+  });
+  check("a timed-out payload stops the queue", summary.stopped === true && summary.failed === 1,
+    `stopped=${summary.stopped} failed=${summary.failed}`);
+  check("the payload after a timeout never runs",
+    !text().includes("must not execute") && !text().includes("[2/2] after.js"));
+  check("the stop reason says the payload may still be running",
+    /may still be running/.test(summary.reason || "") &&
+    /queue stopped: hangs\.js ran for 0\.04s without returning and may still be running/.test(text()));
+  check("the overrun is reported on screen",
+    text().includes("payload has run for 0.04s and has not returned"));
+  check("a timed-out queue is not ok", summary.ok === false);
+}
+
 // Explicit queue stops wait for cleanup and do not run subsequent payloads.
 {
   const { p, chain } = makeFake();

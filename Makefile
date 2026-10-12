@@ -69,6 +69,7 @@ print-version:
 test:
 	node tools/test_elfldr_check.js
 	node tools/test_autoload_payload.js
+	node tools/test_payload_queue.js
 	node tools/test_retry_orchestrator.js
 	node tools/test_installer.js
 	node tools/test_selection_flow.js

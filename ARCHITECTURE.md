@@ -40,6 +40,21 @@ The payload queue runs in order: `[1/3] elfldr-check.js`, `[2/3] poops.js`
 (or `relapse.js`), then `[3/3] autoload.js`. Each payload runs directly in the page
 context without wrappers.
 
+Relapse ends every run with an explicit cleanup verdict, the equivalent of
+poops' own verdict banner (Relapse upstream has none). `run()` checks the
+result of the AIO group cleanup before changing privileges: a failed defuse
+means armed waiters are still live in the kernel, so the exploit stops instead
+of escalating or loading payloads over them. `rescue()` then aggregates every
+cleanup step — the AIO defuse, the oid restoration (verified through sysctl
+even when the fast kernel write path never came up), the crossed-pipe
+disarmament and the parked-worker release — and prints one verdict line:
+`Cleanup: verified the kernel state was restored`, or
+`Cleanup: did not verify the kernel state: REBOOT the console`. A run whose
+cleanup did not verify refuses to publish a krw handle, so the autoload payload
+sends nothing, and the page's orchestrator latches it as dirty. Pre-kernel
+failures (a refused prefetch, missing loader hooks) vouch for themselves with
+`the kernel was never touched`, which keeps them retryable.
+
 The installation flow is choose, then cache:
 
 1. The installer page loads with no `?exploit=`. On firmware that supports both
@@ -124,20 +139,32 @@ kernel state the exploits carefully put back. What it does instead:
 
 * Before the kernel payload starts, a wedged page (no log output for 90 s, or a
   pre-kernel error with no follow-up for 20 s) reloads automatically — at that
-  point nothing has touched the kernel, so a reload is always safe.
-* After the queue finishes, a *clean* failure (the exploit reported a stop or a
-  thrown stage and its own cleanup checks passed) triggers an automatic page
-  reload with a visible countdown, up to 3 times per browser session with 5/10/20 s
-  backoff. Poops' own session latch permits this: a previous run with a CLEAN
-  verdict clears itself, so the re-run proceeds.
+  point nothing has touched the kernel, so a reload is always safe. A reload the
+  watchdog scheduled while the page was silent is cancelled — and its spent
+  retry attempt refunded — the moment the kernel payload starts, so a countdown
+  left over from a quiet WebKit stage can never fire mid-exploit.
+* After the queue finishes, a *clean* failure triggers an automatic page reload
+  with a visible countdown, up to 3 times per browser session with 5/10/20 s
+  backoff — but only when the payload itself left an explicit clean verdict
+  (poops' verdict banner and lost-race summary, or Relapse's cleanup verdict,
+  which only prints after rescue() verified every restoration). A kernel-phase
+  failure without one is treated as dirty: nobody vouched for the kernel state,
+  so silence is not cleanliness. Poops' own session latch permits the retry: a
+  previous run with a CLEAN verdict clears itself, so the re-run proceeds.
 * A *dirty* failure never re-exploits. Log lines that mean the kernel was left
   modified or unverifiable (poops' `REBOOT NOW` verdict and latch refusals,
   cleanup failures, a dead ROP chain, watchdog timeouts, a payload overrun, a
   held krw handle) switch the page to a "Reboot required" state instead: running
   a kernel exploit again on top of a half-modified kernel is what turns a failed
-  run into a console panic.
+  run into a console panic. The verdict is sticky: even a late
+  "Autoload: sent" line cannot turn a dirty run back into a clean one, clear
+  the reboot demand, or erase the latch.
 * Success markers ("Autoload: sent", an already-running loader) clear the retry
-  counter, and a late success even cancels a pending retry countdown.
+  counter, and a late success even cancels a pending retry countdown — unless
+  the run was already dirty, in which case the reboot demand stands.
+* A payload that overruns its queue deadline stops the queue instead of moving
+  on: the deadline only ends the wait, it does not cancel the payload, so the
+  next payload must never start alongside one that may still be executing.
 
 The same script maintains a **kernel-state latch** in sessionStorage — the
 page-level equivalent of poops' own session latch, which Relapse lacks. The run
@@ -232,19 +259,25 @@ and updates with two app configurations, embedded resources, service errors,
 notifications, browser launch, foreground-user cleanup, long-log truncation and
 raw DEFLATE. Native ELF compilation still uses the PS5 SDK.
 
-`make test` runs the five offline suites. `tools/test_elfldr_check.js` drives the
+`make test` runs the six offline suites. `tools/test_elfldr_check.js` drives the
 real check payload through the upstream queue, verifying accepted/refused sockets,
 the mid-startup probe window, the Relapse network preflight (including the poops
 chain never asking and the check stepping aside without the syscall stub),
 descriptor cleanup, and skipping the remaining payloads on a stop or unexpected
-probe failure. `tools/test_autoload_payload.js` covers
+probe failure. `tools/test_payload_queue.js` covers the queue's deadline
+handling: a payload that overruns its timeout stops the queue instead of
+running the next payload alongside one that may still be executing.
+`tools/test_autoload_payload.js` covers
 the third payload: ELF staging into the mapping, the hand-off to elfldr,
 short socket writes, chunk write retries, the missing-`krw` refusal and cleanup on
 failure. `tools/test_retry_orchestrator.js` drives the page script through a fake
 DOM with a controllable clock: clean failures auto-retry within the budget, every
 dirty marker demands a reboot and never reloads, the pre-kernel watchdog recovers a
-silent page, the kernel phase is never interrupted, and the kernel-state latch
-gates reloads after dirty and interrupted runs. `tools/test_installer.js`
+silent page, the kernel phase is never interrupted (a watchdog reload pending at
+the kernel payload's start is cancelled and refunded), a late success never
+rescues a dirty verdict, the kernel-state latch gates reloads after dirty and
+interrupted runs, and a kernel-phase failure needs an explicit clean verdict to
+be retryable. `tools/test_installer.js`
 checks the installer's cache events, the marker gate, choice gating in both
 orders, error handling, repair confirmation and the pointer.
 `tools/test_selection_flow.js` checks that a pick is stored on the origin and that

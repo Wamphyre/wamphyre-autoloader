@@ -83,6 +83,7 @@
   var phase = 'boot';
   var terminal = false;    // the queue reported a summary or a stop
   var dirty = false;       // the kernel may be modified: never re-exploit
+  var cleanVerdict = false; // the payload itself vouched for the kernel state
   var locked = false;       // the gate refused this boot: the display is final
   var lastLineAt = Date.now();
   var lastErrorAt = 0;
@@ -97,6 +98,7 @@
     /reboot the console/i,
     /cleanup[: ]+failed/i,
     /aio cleanup failed/i,
+    /aio groups did not defuse/i,
     /oid restore check failed/i,
     /pipe buffer was not cleared/i,
     /leaving both armed/i,
@@ -109,6 +111,19 @@
     /latch is already held/i,
     /already holds a krw handle/i,
     /has run for \d+s and has not returned/i
+  ];
+
+  // Lines where the payload itself vouched for the kernel state after the
+  // kernel payload started: poops' verdict banner and its lost-race summary
+  // (poops records a CLEAN verdict of its own in exactly those cases), and
+  // Relapse's cleanup verdict, which only prints after rescue() verified
+  // every restoration. A kernel-phase failure without one of these lines is
+  // dirty: nobody vouched for the kernel, so silence is not cleanliness.
+  var CLEAN_PATTERNS = [
+    /cleanup reported clean/i,
+    /nothing was claimed/i,
+    /verified the kernel state was restored/i,
+    /the kernel was never touched/i
   ];
 
   function storageWorks() {
@@ -182,7 +197,30 @@
     }
   }
 
+  // Cancel a pending reload that the kernel payload's start overtakes, and
+  // give the retry attempt it consumed back: the countdown spent one when it
+  // was scheduled, and that reload never fired.
+  function cancelPendingReload() {
+    if (reloadTimer === null) return;
+    cancelReload();
+    var used = retriesUsed();
+    if (used > 0) {
+      try {
+        if (used > 1) sessionStorage.setItem(RETRY_KEY, String(used - 1));
+        else sessionStorage.removeItem(RETRY_KEY);
+      } catch (error) {}
+    }
+  }
+
   function markSuccess() {
+    // A dirty verdict is sticky: a late success line must never turn a run
+    // that left the kernel modified into a clean one, clear its reboot
+    // demand, or erase the latch the next launch refuses on.
+    if (dirty) {
+      noteKernelState('dirty');
+      cancelReload();
+      return;
+    }
     var pending = reloadTimer !== null;
     cancelReload();
     clearRetries();
@@ -218,6 +256,14 @@
 
     reloadTimer = setInterval(function () {
       if (announce()) return;
+      // A reload the pre-kernel watchdog scheduled must never fire once the
+      // kernel payload has started: tearing down the WebProcess mid-race is
+      // the one forbidden reload. Reloads the retry policy schedules after
+      // the queue's summary are terminal and always proceed.
+      if (!terminal && (phase === 'kernel' || phase === 'post')) {
+        cancelPendingReload();
+        return;
+      }
       cancelReload();
       update(percent, 'Reloading...', 'retry');
       try { location.reload(); } catch (error) {}
@@ -234,11 +280,26 @@
         'unverifiable. Do not run the exploit again before rebooting.', 'error');
       return;
     }
-    noteKernelState('clean');
     if (failedCount === 0) {
+      noteKernelState('clean');
       markSuccess();
       return;
     }
+    // The queue failed after the kernel payload had started. Re-running the
+    // kernel exploit is only safe when the payload itself vouched for the
+    // kernel state (an explicit clean verdict, like poops' verdict banner or
+    // Relapse's cleanup verdict). Without one, nobody can vouch: treat it as
+    // dirty and demand a reboot instead of retrying blindly.
+    if ((phase === 'kernel' || phase === 'post') && !cleanVerdict) {
+      dirty = true;
+      noteKernelState('dirty');
+      cancelReload();
+      update(percent, 'Reboot required: the run failed without a clean verdict, ' +
+        'so nobody can vouch for the kernel state. Do not run the exploit ' +
+        'again before rebooting.', 'error');
+      return;
+    }
+    noteKernelState('clean');
     scheduleReload(BACKOFF_SECONDS[Math.min(retriesUsed(), BACKOFF_SECONDS.length - 1)]);
   }
   function stopPolicy(text) {
@@ -262,6 +323,17 @@
         'unverifiable. Do not run the exploit again before rebooting.', 'error');
       return;
     }
+    // A stop inside or after the kernel payload is only retryable with an
+    // explicit clean verdict, for the same reason as a failed summary.
+    if ((phase === 'kernel' || phase === 'post') && !cleanVerdict) {
+      dirty = true;
+      noteKernelState('dirty');
+      cancelReload();
+      update(percent, 'Reboot required: the queue stopped without a clean ' +
+        'verdict, so nobody can vouch for the kernel state. Do not run the ' +
+        'exploit again before rebooting.', 'error');
+      return;
+    }
     noteKernelState('clean');
     scheduleReload(BACKOFF_SECONDS[Math.min(retriesUsed(), BACKOFF_SECONDS.length - 1)]);
   }
@@ -269,9 +341,12 @@
   function trackPhase(text) {
     if (/\[2\/3\]/.test(text)) {
       if (phase !== 'kernel' && phase !== 'post') {
-        phase = 'kernel';
         // The kernel exploit is starting: from here until the queue reports a
-        // summary, an interrupted run means an unknown kernel state.
+        // summary, an interrupted run means an unknown kernel state. A reload
+        // scheduled by the pre-kernel watchdog while the page was silent must
+        // never fire mid-exploit, so cancel it and refund its spent attempt.
+        if (!terminal) cancelPendingReload();
+        phase = 'kernel';
         noteKernelState('inflight');
       }
     } else if (/\[3\/3\]/.test(text)) {
@@ -288,6 +363,16 @@
     for (var i = 0; i < DIRTY_PATTERNS.length; i++) {
       if (DIRTY_PATTERNS[i].test(text)) {
         dirty = true;
+        return;
+      }
+    }
+  }
+
+  function checkCleanVerdict(text) {
+    if (cleanVerdict) return;
+    for (var i = 0; i < CLEAN_PATTERNS.length; i++) {
+      if (CLEAN_PATTERNS[i].test(text)) {
+        cleanVerdict = true;
         return;
       }
     }
@@ -317,8 +402,15 @@
     lastLineAt = Date.now();
     if (error) lastErrorAt = Date.now();
     trackPhase(text);
-    if (phase === 'kernel' || phase === 'post') checkDirty(text);
+    if (phase === 'kernel' || phase === 'post') {
+      checkDirty(text);
+      if (!cleanVerdict) checkCleanVerdict(text);
+    }
     if (/Autoload: sent \d+ bytes/.test(text)) markSuccess();
+    // The display is final once the queue reported its summary or stop; only
+    // a late success may still matter (it cancels a pending retry), but late
+    // errors must not rewrite the verdict the page already shows.
+    if (finished) return;
 
     var summary = /queue finished: \d+\/\d+ completed, (\d+) failed/.exec(text);
     if (summary) {
@@ -341,7 +433,6 @@
       update(percent, 'An error occurred. See the log above.', 'error');
       return;
     }
-    if (finished) return;
     if (/Autoload: sent \d+ bytes/.test(text)) {
       sent = true;
       update(98, 'Finishing autoload...');

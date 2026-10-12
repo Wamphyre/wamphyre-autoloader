@@ -10871,6 +10871,7 @@ function disarmKrw(handle) {
       "api.prefetchKexp / api.launchKexp are missing. This loader build predates the " +
       "poops payload: re-cache the loader (installer, or reload the User's Guide) and " +
       "send it again.", "error");
+    await api.log("the kernel was never touched, so there is nothing to clean", "info");
     return;
   }
   if (api.krw) {
@@ -10897,6 +10898,7 @@ function disarmKrw(handle) {
   if (missingGadgets.length) {
     await api.log("offsets/" + api.fw + ".js is missing gadgets this payload needs: " +
       missingGadgets.join(", "), "error");
+    await api.log("the kernel was never touched, so there is nothing to clean", "info");
     return;
   }
 
@@ -10926,6 +10928,7 @@ function disarmKrw(handle) {
       " -- this payload cannot run on fw " + api.fw, "error");
     for (const [name, , why] of missingOffsets)
       await api.log("    " + name + ": " + why, "info");
+    await api.log("the kernel was never touched, so there is nothing to clean", "info");
     return;
   }
 
@@ -10937,6 +10940,7 @@ function disarmKrw(handle) {
       (e && e.message ? e.message : e) +
       ". Check that host.py is still serving and the PS5 DNS still points at this PC.",
       "error");
+    await api.log("the kernel was never touched, so there is nothing to clean", "info");
     return;
   }
 
@@ -10973,6 +10977,9 @@ function disarmKrw(handle) {
     await api.log("setup refused: " + (e && e.message ? e.message : e), "error");
     if (e && e.stack) for (const line of String(e.stack).split("\n").slice(0, 4))
       await api.log("  " + line, "error");
+    // Everything in the setup block is userland preparation; the ladder below
+    // is where kernel contact starts.
+    await api.log("the kernel was never touched, so there is nothing to clean", "info");
     return;
   }
 

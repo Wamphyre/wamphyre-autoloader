@@ -4,6 +4,51 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v0.6.2] - 2026-10-12
+
+### Stability & Reliability
+
+* **Explicit cleanup verdicts gate every retry**: a kernel-phase failure is only
+  retryable when the payload itself vouched for the kernel state. Poops already
+  prints a verdict banner; Relapse now ends every run with one too — `rescue()`
+  aggregates the AIO group defuse, the oid restoration, the crossed-pipe
+  disarmament and the parked-worker release, and prints exactly one verdict
+  line. A failure that says nothing about the kernel state is no longer
+  assumed to be clean, so Relapse stops that used to auto-retry over an
+  unvouched kernel now demand a reboot instead. Pre-kernel failures (a refused
+  prefetch, missing loader hooks) vouch for themselves with "the kernel was
+  never touched" and stay retryable.
+* **Relapse refuses to escalate over armed AIO groups**: `defuseAioGroups()`
+  returns whether the armed waiters were cleared, and `run()` now honours that
+  result — a failed defuse stops the exploit before the privilege escalation
+  and payload launch instead of carrying on over live waiters. Cleanup errors
+  that were only logged (an unrestorable oid state, a pipe buffer that stayed
+  crossed, unreleased parked workers, a skipped restoration when the fast
+  kernel write path never came up) now feed the verdict: the run is not treated
+  as a success, no krw handle is published, nothing is sent over the kernel,
+  and the page's latch records it as dirty.
+* **A pending watchdog reload can never fire mid-exploit**: a reload the
+  pre-kernel watchdog scheduled while the page was silent is cancelled — and
+  its spent retry attempt refunded — the moment the kernel payload starts.
+  Previously the countdown kept running and could tear down the WebProcess in
+  the middle of the kernel race, the one reload this orchestrator exists to
+  prevent.
+* **A late success cannot rescue a dirty verdict**: success markers no longer
+  clear the retry state or record `clean` in the kernel-state latch once a dirty
+  marker was seen. Previously a late "Autoload: sent" after a dirty failure
+  erased the reboot demand from the latch, and the next launch would re-exploit
+  over a kernel the previous run left modified.
+* **A payload timeout stops the queue**: the standalone queue's deadline only
+  ends the wait, it does not cancel the payload, so an overrun now stops the
+  queue with "may still be running" instead of starting the next payload
+  alongside one that may still be executing. New regression coverage in
+  `tools/test_payload_queue.js`, alongside new orchestrator tests for the
+  pending-reload cancellation, the sticky dirty verdict and the
+  explicit-verdict retry rule, and upstream selftest coverage for Relapse's
+  verdict lines.
+
+## [v0.6.1] - 2026-10-08
+
 ### Wamphyre fork
 
 * **Renamed to Wamphyre Autoloader** across the whole project: homescreen app
@@ -46,8 +91,8 @@ All notable changes to this project will be documented in this file.
   kernel exploit starts and stops with a clear, non-retryable message when the
   console has no active connection, instead of burning a full exploit attempt
   on a guaranteed failure. Poops works offline and is never asked.
-* **elfldr startup window**: the ELF loader check now re-probes briefly instead
-  of trusting a single refused connection, so a loader that is still starting up
+* **elfldr startup window**: the ELF loader check now re-probes briefly instead of
+  trusting a single refused connection, so a loader that is still starting up
   is not mistaken for a dead one.
 * **ELF transfer retries**: a failed chunk write during autoload is retried before
   the transfer is called off, so a transient hiccup does not waste a successful
@@ -55,8 +100,6 @@ All notable changes to this project will be documented in this file.
 * New offline test suites for the retry orchestrator, the kernel-state latch and
   the network preflight (`tools/test_retry_orchestrator.js`), alongside updated
   payload checks.
-
-## [v0.6.1] - 2026-10-08
 
 * **9.05, 11.40 & 11.60**: Added missing offsets to fix Poops support.
   *(Note: Relapse remains unsupported on 9.05 and 11.40)*

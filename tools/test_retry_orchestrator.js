@@ -167,7 +167,8 @@ function runSuccessFlow(page) {
   }
 
   // 2. Clean failure: automatic countdown, then a reload, and the attempt
-  // is counted so a wedged loop cannot spin forever.
+  // is counted so a wedged loop cannot spin forever. The failure carries
+  // Relapse's explicit cleanup verdict, which is what makes it retryable.
   {
     const page = makePage();
     page.say('[*] Starting WebKit exploit');
@@ -175,6 +176,7 @@ function runSuccessFlow(page) {
     page.say('=== [1/3] elfldr-check.js ===', 'success');
     page.say('=== [2/3] relapse.js ===', 'success');
     page.say('the exploit stopped before kernel r/w was established', 'error');
+    page.say('Cleanup: verified the kernel state was restored', 'success');
     page.say('=== [3/3] autoload.js ===', 'success');
     page.say('The exploit did not complete; no ELF was sent.', 'error');
     page.say('=== queue finished: 2/3 completed, 1 failed ===', 'error');
@@ -211,8 +213,11 @@ function runSuccessFlow(page) {
     ['cleanup failed: the ROP chain died at chain.run', 'error'],
     ['Cleanup: failed', 'error'],
     ['cleanup: aio cleanup failed (1 skipped, 1 failed)', 'error'],
+    ['Kernel: stopped: aio groups did not defuse; not escalating over armed groups', 'error'],
     ['Cleanup: oid restore check failed', 'error'],
+    ['Cleanup: oid restore check failed: kernel r/w is not available and the oid state is not the original one', 'error'],
     ['Cleanup: pipe buffer was not cleared', 'error'],
+    ['Cleanup: pipe buffer was not cleared: the master pipe fields written before the failure are still in place', 'error'],
     ['Cleanup: could not aim the victim at the master, leaving both armed', 'error'],
     ['Cleanup: could not release aio workers', 'error'],
     ['Cleanup: current process unavailable', 'error'],
@@ -222,6 +227,8 @@ function runSuccessFlow(page) {
     ['the poops latch is already held for this session: ps1', 'warn'],
     ['this session already holds a krw handle, so the kernel has already been hit', 'warn'],
     ['payload has run for 600s and has not returned', 'error'],
+    ['Cleanup: did not verify the kernel state: REBOOT the console', 'error'],
+    ['the exploit finished, but its cleanup did not verify the kernel state -- no payloads will be sent and no krw handle is published. REBOOT the console before running the exploit again.', 'error'],
   ]) {
     const page = makePage();
     page.say('=== [2/3] poops.js ===', 'success');
@@ -267,12 +274,14 @@ function runSuccessFlow(page) {
     assert.equal(page.reloadCalls(), 0);
   }
 
-  // 8. The retry budget: a fourth clean failure demands a human.
+  // 8. The retry budget: a fourth clean failure demands a human. The kaslr
+  // throw never reaches the kernel, so rescue() still verifies a clean state.
   {
     const page = makePage();
     page.setRetries(3);
     page.say('=== [2/3] relapse.js ===', 'success');
     page.say('the exploit threw: kaslr: no routing reply', 'error');
+    page.say('Cleanup: verified the kernel state was restored', 'success');
     page.say('=== queue finished: 2/3 completed, 1 failed ===', 'error');
     assert.match(page.label(), /Automatic retry is not available/);
     page.tick(120000);
@@ -281,7 +290,7 @@ function runSuccessFlow(page) {
 
   // 9. A payload overrun while autoload is in flight is dirty: the hijacked
   // worker is stuck inside a kernel syscall and a reload cannot help. Even a
-  // late "sent" must not rescue that verdict.
+  // late "sent" must not rescue that verdict -- or the latch behind it.
   {
     const page = makePage();
     page.say('=== [3/3] autoload.js ===', 'success');
@@ -290,14 +299,20 @@ function runSuccessFlow(page) {
     assert.match(page.label(), /Reboot required/);
     page.say('Autoload: sent 123456 bytes of autoload.elf to elfldr.', 'success');
     assert.match(page.label(), /Reboot required/);
+    assert.equal(page.kernelState(), 'dirty',
+      'a late success must not erase the dirty verdict from the latch');
     page.tick(120000);
     assert.equal(page.reloadCalls(), 0);
   }
 
   // 10. A late success after a *clean* failure cancels a pending reload
-  // instead of reloading over a transfer that did land.
+  // instead of reloading over a transfer that did land. The kernel payload
+  // left its cleanup verdict before autoload failed, which is what made the
+  // first failure retryable.
   {
     const page = makePage();
+    page.say('=== [2/3] relapse.js ===', 'success');
+    page.say('Cleanup: verified the kernel state was restored', 'success');
     page.say('=== [3/3] autoload.js ===', 'success');
     page.say('ELF transfer failed after 0 bytes.', 'error');
     page.say('=== queue finished: 2/3 completed, 1 failed ===', 'error');
@@ -341,11 +356,12 @@ function runSuccessFlow(page) {
   }
 
   // 13. A clean failure also leaves 'clean': the auto-retry reload is allowed
-  // to boot again immediately.
+  // to boot again immediately. The verdict line is what authorises the retry.
   {
     const page = makePage();
     page.say('=== [2/3] relapse.js ===', 'success');
     page.say('the exploit stopped before kernel r/w was established', 'error');
+    page.say('Cleanup: verified the kernel state was restored', 'success');
     page.say('=== queue finished: 2/3 completed, 1 failed ===', 'error');
     assert.equal(page.kernelState(), 'clean');
     assert.match(page.label(), /automatic retry 1 of 3/);
@@ -413,5 +429,127 @@ function runSuccessFlow(page) {
     assert.equal(page.kernelState(), 'clean');
   }
 
-  console.log('Retry orchestrator checks passed: clean failures auto-retry within budget, dirty failures demand a reboot, the pre-kernel watchdog recovers a wedged page, the kernel phase is never interrupted, and the kernel-state latch gates every reload.');
+  // 18. A watchdog reload scheduled while the page was silent must be
+  // cancelled -- and its spent attempt refunded -- the moment the kernel
+  // payload starts: firing it mid-race is the one forbidden reload.
+  {
+    const page = makePage();
+    page.say('[*] Starting WebKit exploit');
+    page.tick(96000); // the watchdog arms its reload, the countdown is pending
+    assert.equal(page.reloadCalls(), 0, 'the countdown must be pending');
+    assert.equal(page.retries(), '1');
+    page.say('=== [2/3] relapse.js ===', 'success'); // the kernel payload starts
+    assert.equal(page.retries(), null, 'the cancelled countdown must refund its attempt');
+    page.tick(300000); // a long kernel run
+    assert.equal(page.reloadCalls(), 0, 'a reload must never fire while the kernel exploit is in flight');
+    // The refund left the full budget for a genuine failure afterwards.
+    page.say('the exploit stopped before kernel r/w was established', 'error');
+    page.say('Cleanup: verified the kernel state was restored', 'success');
+    page.say('=== queue finished: 2/3 completed, 1 failed ===', 'error');
+    assert.match(page.label(), /automatic retry 1 of 3/);
+    assert.equal(page.retries(), '1');
+    assert.equal(page.kernelState(), 'clean');
+  }
+
+  // 19. A kernel-phase failure without an explicit clean verdict is dirty:
+  // Relapse failures used to fall through to 'clean' and auto-retry over a
+  // kernel nobody vouched for.
+  {
+    const page = makePage();
+    page.say('=== [2/3] relapse.js ===', 'success');
+    page.say('the exploit stopped before kernel r/w was established', 'error');
+    page.say('=== queue finished: 2/3 completed, 1 failed ===', 'error');
+    assert.match(page.label(), /Reboot required/);
+    assert.match(page.label(), /without a clean verdict/);
+    assert.equal(page.kernelState(), 'dirty');
+    page.tick(120000);
+    assert.equal(page.reloadCalls(), 0);
+  }
+
+  // 20. A queue stop inside the kernel phase is only retryable with a
+  // verdict, for the same reason as a failed summary.
+  {
+    const page = makePage();
+    page.say('=== [2/3] relapse.js ===', 'success');
+    page.say('=== queue stopped: relapse.js requested a stop mid-exploit; 1 payload(s) skipped ===', 'error');
+    assert.match(page.label(), /Reboot required/);
+    assert.equal(page.kernelState(), 'dirty');
+    page.tick(120000);
+    assert.equal(page.reloadCalls(), 0);
+  }
+
+  // 21. A late success must never rescue a dirty verdict: the run stays a
+  // reboot demand in the display AND in the latch, and the retry budget is
+  // not consumed.
+  {
+    const page = makePage();
+    page.say('=== [2/3] relapse.js ===', 'success');
+    page.say('Cleanup: did not verify the kernel state: REBOOT the console', 'error');
+    page.say('=== [3/3] autoload.js ===', 'success');
+    page.say('Autoload: sent 123456 bytes of autoload.elf to elfldr.', 'success');
+    page.say('=== queue finished: 3/3 completed, 0 failed ===', 'success');
+    assert.match(page.label(), /Reboot required/);
+    assert.equal(page.kernelState(), 'dirty');
+    assert.equal(page.retries(), null, 'a dirty run must not consume the retry budget');
+    page.tick(120000);
+    assert.equal(page.reloadCalls(), 0);
+  }
+
+  // 22. Poops' own verdict lines authorise retries: a lost race that cleaned
+  // up after itself ("nothing was claimed") and a full pass whose krw
+  // publication was skipped ("cleanup reported clean") both leave the latch
+  // clean and the retry armed.
+  {
+    const page = makePage();
+    page.say('=== [2/3] poops.js ===', 'success');
+    page.say('nothing was claimed: see the rows above for where it stopped', 'warn');
+    page.say('=== [3/3] autoload.js ===', 'success');
+    page.say('The exploit did not complete; no ELF was sent.', 'error');
+    page.say('=== queue finished: 2/3 completed, 1 failed ===', 'error');
+    assert.match(page.label(), /automatic retry 1 of 3/);
+    assert.equal(page.kernelState(), 'clean');
+  }
+  {
+    const page = makePage();
+    page.say('=== [2/3] poops.js ===', 'success');
+    page.say('all executed checks passed and cleanup reported clean', 'success');
+    page.say('no krw handle to publish: stage 5 never ran', 'warn');
+    page.say('=== [3/3] autoload.js ===', 'success');
+    page.say('The exploit did not complete; no ELF was sent.', 'error');
+    page.say('=== queue finished: 2/3 completed, 1 failed ===', 'error');
+    assert.match(page.label(), /automatic retry 1 of 3/);
+    assert.equal(page.kernelState(), 'clean');
+  }
+
+  // 23. A failure before the kernel was touched vouches for itself
+  // explicitly, so a fetch or setup failure stays a retryable clean failure.
+  {
+    const page = makePage();
+    page.say('=== [2/3] relapse.js ===', 'success');
+    page.say('could not fetch the elfldr/kexp binaries: the embedded data is corrupt.', 'error');
+    page.say('the kernel was never touched, so there is nothing to clean', 'info');
+    page.say('=== [3/3] autoload.js ===', 'success');
+    page.say('The exploit did not complete; no ELF was sent.', 'error');
+    page.say('=== queue finished: 2/3 completed, 1 failed ===', 'error');
+    assert.match(page.label(), /automatic retry 1 of 3/);
+    assert.equal(page.kernelState(), 'clean');
+  }
+
+  // 24. A late error line after the summary must not rewrite the final
+  // verdict display; only a late success still matters after the queue ends.
+  {
+    const page = makePage();
+    page.say('=== [2/3] relapse.js ===', 'success');
+    page.say('Cleanup: verified the kernel state was restored', 'success');
+    page.say('=== [3/3] autoload.js ===', 'success');
+    page.say('ELF transfer failed after 0 bytes.', 'error');
+    page.say('=== queue finished: 2/3 completed, 1 failed ===', 'error');
+    assert.match(page.label(), /automatic retry 1 of 3/);
+    page.say('payload threw: a late straggler error', 'error');
+    assert.match(page.label(), /automatic retry 1 of 3/, 'a late error must not rewrite the verdict');
+    page.tick(6000);
+    assert.equal(page.reloadCalls(), 1);
+  }
+
+  console.log('Retry orchestrator checks passed: clean failures auto-retry within budget, dirty failures demand a reboot, the pre-kernel watchdog recovers a wedged page, the kernel phase is never interrupted, the kernel-state latch gates every reload, and a kernel-phase failure needs an explicit clean verdict to be retryable.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
