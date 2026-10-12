@@ -133,19 +133,23 @@ print(f"{os.path.basename(dest)} ready ({tag}): {dest}")
 PY
 }
 
-if [ ! -e "$ELFLDR_SUBMODULE/.git" ]; then
-    echo "Error: ps5-elfldr submodule is not initialised."
-    echo "Run: git submodule update --init"
+# This fork vendors the upstream projects as plain directories (no git
+# submodules), so the checks below only verify the vendored sources are
+# present; the ELF assets themselves come from the pinned GitHub releases.
+
+if [ ! -d "$ELFLDR_SUBMODULE" ]; then
+    echo "Error: vendored ps5-elfldr sources are missing ($ELFLDR_SUBMODULE)."
     exit 1
 fi
 
-if [ ! -e "$PAYLOAD_SUBMODULE/.git" ]; then
-    echo "Error: ps5-unified-autoloader submodule is not initialised."
-    echo "Run: git submodule update --init"
+if [ ! -d "$PAYLOAD_SUBMODULE" ]; then
+    echo "Error: vendored ps5-unified-autoloader sources are missing ($PAYLOAD_SUBMODULE)."
     exit 1
 fi
 
-PAYLOAD_TAG=$(git -C "$PAYLOAD_SUBMODULE" describe --tags --always)
+# The vendored tree carries no git metadata of its own; pin the tag the
+# vendored sources correspond to (overridable for updated vendoring).
+PAYLOAD_TAG="${PAYLOAD_TAG:-v0.1.5-915a65e}"
 
 download_release "$ELFLDR_REPO" "$ELFLDR_TAG" "$ELFLDR_DEST"
 download_release "$PAYLOAD_REPO" "$PAYLOAD_TAG" "$PAYLOAD_DEST"

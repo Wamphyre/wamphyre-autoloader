@@ -17,6 +17,11 @@ All notable changes to this project will be documented in this file.
 * **New application icon**: a bat silhouette over a blood moon, generated from
   a new master `assets/icon.svg` (`make icons` now also falls back to
   cairosvg when rsvg-convert is unavailable).
+* **Vendored upstream trees**: `third_party/` no longer uses git submodules —
+  the upstream projects are plain directories in this repository, and
+  `tools/download_deps.sh` pins the payload release tag instead of reading it
+  from submodule metadata. `.github`, `.gitignore` and the CI workflows were
+  restored after the repository move, with the Wamphyre naming applied.
 
 ### Stability & Reliability
 

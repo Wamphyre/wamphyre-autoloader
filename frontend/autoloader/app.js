@@ -50,9 +50,9 @@
   element('div', 'buildInfo', footer, 'Wamphyre Autoloader' +
     (config.version ? ' v' + config.version : '') + ' by PLK' +
     (config.buildTime ? ' (built ' + config.buildTime + ')' : ''));
-  var source = element('div', 'sourceInfo', footer, 'This project is free and open source: ');
-  var link = element('a', 'sourceLink', source, "a fork of PLK's ps5-webkit-autoloader");
-  link.href = 'https://github.com/itsPLK/ps5-webkit-autoloader';
+  var source = element('div', 'sourceInfo', footer, 'Wamphyre Autoloader, a fork of PLK\'s WebKit Autoloader: ');
+  var link = element('a', 'sourceLink', source, 'github.com/Wamphyre/wamphyre-autoloader');
+  link.href = 'https://github.com/Wamphyre/wamphyre-autoloader';
 
   var percent = 0;
   var finished = false;

@@ -28,7 +28,7 @@ primitive and ROP worker, then runs this queue:
    asks. A refused connection after the short window allows the queue to
    proceed; an unexpected probe or cleanup error stops it instead of retrying a
    kernel exploit blindly. No kernel access is required for this check.
-2. `poops.js` (or `relapse.js`) runs unmodified from the submodule. It establishes
+2. `poops.js` (or `relapse.js`) runs unmodified from the vendored upstream payload. It establishes
    kernel access and brings up elfldr/kexp itself on port 9021.
 3. `autoload.js` then stages the bundled ELF into an anonymous mapping and streams
    it to elfldr in 64 KiB chunks. A failed chunk write is retried twice (250 ms
@@ -90,7 +90,7 @@ network interface, but no Internet access.
   once per chain with `payloads/elfldr-check.js`, that chain's exploit, then
   `payloads/autoload.js::<payload_elf>`, plus
   `--elfldr` and `--embed <payload_elf>=<file>`. Outputs: `build/autoloader/{poops,relapse}.html`.
-  The exploits are submodule paths, resolved relative to the submodule root.
+  The exploits are paths into the vendored upstream tree, resolved relative to `third_party/ps5-webkit-remote-loader`.
 - `make all`: stage the installer page, stable pointer and generated HTML; generate
   a compressed C registry and AppCache manifest; compile `installer.elf` with the
   PS5 SDK. Both installers compile remote-loader's `installer/common` sources;
@@ -175,8 +175,9 @@ or changing the exploit sources.
 
 `tools/download_deps.sh` downloads the pinned itsPLK elfldr and unified-autoloader
 release assets, caching verified digest sidecars. kexp is the binary bundled by
-remote-loader. Submodule initialization is non-recursive: remote-loader's nested
-copy of this repository is not a build input.
+remote-loader. The vendored trees are plain directories (this fork does not use
+git submodules): remote-loader's nested copy of this repository is not a build
+input.
 
 `build_release.sh` pins `BUILD_VERSION` once across Docker, HTML/cache generation,
 and PC host packaging, then writes versioned ELF/Python artifacts. GitHub Actions

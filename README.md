@@ -31,7 +31,7 @@ There are two ways to set up the autoloader, depending on whether you're already
 
 ### Already jailbroken? Just load the installer ELF
 
-1. Download `wamphyre-autoloader-installer_vX.Y.Z.elf` from the [Releases](https://github.com/itsPLK/ps5-webkit-autoloader/releases) page.
+1. Download `wamphyre-autoloader-installer_vX.Y.Z.elf` from the [Releases](https://github.com/Wamphyre/wamphyre-autoloader/releases) page.
 2. Send it to your PS5 with `elfldr`, or launch it from Payload Manager.
 3. The installer opens the browser to cache the autoloader page (choose Poops or Relapse if prompted), creates the **Wamphyre Autoloader** app on the homescreen, and exits.
 4. **Reboot once**, then launch **Wamphyre Autoloader** from the homescreen.
@@ -40,7 +40,7 @@ There are two ways to set up the autoloader, depending on whether you're already
 
 If you aren't jailbroken yet, you'll need to host the exploit locally on your PC for the initial setup:
 
-1. Download `wamphyre-autoloader-host.py` (or the `.exe`) from the [Releases](https://github.com/itsPLK/ps5-webkit-autoloader/releases) and run it on a PC on your network.
+1. Download `wamphyre-autoloader-host.py` (or the `.exe`) from the [Releases](https://github.com/Wamphyre/wamphyre-autoloader/releases) and run it on a PC on your network.
 2. On your PS5, set your network's DNS server to your PC's IP address.
 3. Open the **User's Guide** from Settings to run the installer, which adds the **Wamphyre Autoloader** app to your homescreen.
 4. **Reboot once**, then launch **Wamphyre Autoloader** from the homescreen.
@@ -114,6 +114,8 @@ The autoloader page watches its own run and reacts to failures:
 The autoloader content is cached on the console, so updating is exactly the same as the initial install. Simply follow the **[Setup Instructions](#setup-instructions)** using the new release files. 
 
 The latest installer payload will re-create the homescreen app and refresh the cached page for you. Your payloads and `autoload.txt` on USB / internal storage are never touched.
+
+**Coming from the upstream WebKit Autoloader?** Installing Wamphyre Autoloader removes the old `WKAL00001` app automatically after the new one is installed, so you are always left with a single, protected shortcut.
 </Details>
 
 <Details>
@@ -145,10 +147,46 @@ etaHEN.elf
 
 If you want to create or test your own WebKit payloads, check out [ps5-webkit-remote-loader](https://github.com/itsPLK/ps5-webkit-remote-loader), which this project is based on. It lets you send and run JavaScript payloads directly over the network on port 9027.
 
-Build both release artifacts with `./build_release.sh` (Docker required). The build
-uses remote-loader's standalone HTML and host builders directly. Run `make test` for
-the offline checks (payload, installer, and exploit-selection flow) and `make dev` for
-a local page preview. See [ARCHITECTURE.md](ARCHITECTURE.md) for the build and cache layout.
+The upstream projects this fork builds on (`ps5-webkit-remote-loader`, `ps5-elfldr`, `ps5-unified-autoloader`) are **vendored as plain directories** under `third_party/` — there are no git submodules to initialise.
+
+### Build from source (no Docker)
+
+The release pipeline (`./build_release.sh`) builds inside the
+`wamphyre-autoloader-sdk` Docker image, but the installer ELF also builds
+directly against a local [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk) (v0.44 was used for the current binaries):
+
+```sh
+# 1. Get the prebuilt SDK and unzip it anywhere (this example: ~/ps5-payload-sdk)
+curl -L -o sdk.zip https://github.com/ps5-payload-dev/sdk/releases/download/v0.44/ps5-payload-sdk.zip
+unzip sdk.zip && mv ps5-payload-sdk ~/ps5-payload-sdk
+
+# 2. Build libmicrohttpd 1.0.1 for the PS5 target (same steps as tools/build_deps.sh)
+export PATH="$HOME/ps5-payload-sdk/bin:$PATH"
+export CC=prospero-clang AR=prospero-ar RANLIB=prospero-ranlib
+wget https://ftp.gnu.org/gnu/libmicrohttpd/libmicrohttpd-1.0.1.tar.gz
+tar xf libmicrohttpd-1.0.1.tar.gz && cd libmicrohttpd-1.0.1
+./configure --host=x86_64-pc-freebsd12 --disable-shared --enable-static \
+            --disable-curl --disable-examples --prefix="$HOME/ps5-payload-sdk/target"
+make install && cd ..
+
+# 3. Build the installer ELF (command-line SDK overrides the Makefile default)
+make all SDK="$HOME/ps5-payload-sdk"
+```
+
+Release-style artifacts with pinned versions:
+
+```sh
+export BUILD_VERSION="$(python3 tools/gen_version.py --print)"
+make clean && make all SDK="$HOME/ps5-payload-sdk"
+mv installer.elf "wamphyre-autoloader-installer_v${BUILD_VERSION}.elf"
+make host HOST_PAYLOAD="wamphyre-autoloader-installer_v${BUILD_VERSION}.elf" SDK="$HOME/ps5-payload-sdk"
+mv wamphyre-autoloader-host.py "wamphyre-autoloader-host_v${BUILD_VERSION}.py"
+```
+
+Run `make test` for the offline checks (payload, orchestrator, installer, and
+exploit-selection flow), `make page` to regenerate the standalone chain pages,
+and `make dev` for a local page preview. See
+[ARCHITECTURE.md](ARCHITECTURE.md) for the build and cache layout.
 
 ## Credits
 
@@ -171,6 +209,8 @@ This project is licensed under the GPL-3.0 License.
 - [donate to PLK](DONATE.md)
 
 ## Star History
+
+Star history of the upstream project this fork is based on:
 
 <a href="https://www.star-history.com/?repos=itsplk%2Fps5-webkit-autoloader&type=date&releases=&legend=bottom-right">
  <picture>
