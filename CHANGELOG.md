@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.6.4] - 2026-10-13
+
+* **Branding: the browser header says "by Wamphyre".** The page title, the
+  installer page and the generated build titles no longer credit PLK in the
+  UI; PLK moves to the top of the credits where the fork belongs.
+* **README rewritten:** shorter, focused on the fork's strengths — the
+  jailbreak-and-payloads-in-one-launch experience, the built-in default
+  chain, and the kernel-state safety model.
+* `DONATE.md` removed.
+
 ## [v0.6.3] - 2026-10-13
 
 ### Stability & Reliability

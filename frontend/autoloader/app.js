@@ -43,12 +43,12 @@
   var label = element('div', 'progressLabel', progress);
   var config = window.WAMP_PAGE || {};
   if (config.version) {
-    document.title = 'Wamphyre Autoloader v' + config.version + ' by PLK' +
+    document.title = 'Wamphyre Autoloader v' + config.version + ' by Wamphyre' +
       (config.buildTime ? ' (built ' + config.buildTime + ')' : '');
   }
   var footer = element('div', 'footer', document.body);
   element('div', 'buildInfo', footer, 'Wamphyre Autoloader' +
-    (config.version ? ' v' + config.version : '') + ' by PLK' +
+    (config.version ? ' v' + config.version : '') + ' by Wamphyre' +
     (config.buildTime ? ' (built ' + config.buildTime + ')' : ''));
   var source = element('div', 'sourceInfo', footer, 'Wamphyre Autoloader, a fork of PLK\'s WebKit Autoloader: ');
   var link = element('a', 'sourceLink', source, 'github.com/Wamphyre/wamphyre-autoloader');
