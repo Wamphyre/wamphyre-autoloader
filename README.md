@@ -36,7 +36,7 @@ There are two ways to set up the autoloader, depending on whether you're already
 
 ### Already jailbroken? Just load the installer ELF
 
-1. Download `wamphyre-autoloader-installer_vX.Y.Z.elf` from the [Releases](https://github.com/Wamphyre/wamphyre-autoloader/releases) page.
+1. Download `installer.elf` from the [Releases](https://github.com/Wamphyre/wamphyre-autoloader/releases) page, or build it yourself with `make all` (see [Build from source](#build-from-source-no-docker)).
 2. Send it to your PS5 with `elfldr`, or launch it from Payload Manager.
 3. The installer opens the browser to cache the autoloader page (choose Poops or Relapse if prompted), creates the **Wamphyre Autoloader** app on the homescreen, and exits.
 4. **Reboot once**, then launch **Wamphyre Autoloader** from the homescreen.
