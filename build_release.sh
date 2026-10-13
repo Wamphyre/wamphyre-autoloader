@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the versioned installer ELF and standalone PC setup host.
+# Build the installer ELF (always installer.elf) and the versioned PC setup host.
 set -euo pipefail
 cd "$(dirname "$0")"
 if [ "$#" -ne 0 ]; then
@@ -12,7 +12,6 @@ if [ -z "$BUILD_VERSION" ]; then
     exit 1
 fi
 export BUILD_VERSION
-OUTPUT_ELF="wamphyre-autoloader-installer_v${BUILD_VERSION}.elf"
 HOST_PY="wamphyre-autoloader-host_v${BUILD_VERSION}.py"
 IMAGE_NAME="wamphyre-autoloader-sdk"
 
@@ -25,7 +24,10 @@ fi
 docker run --rm -u "$(id -u):$(id -g)" \
     -e BUILD_VERSION -e "BUILD_TYPE=${BUILD_TYPE:-dev}" -e "CUSTOM_VERSION=${CUSTOM_VERSION:-}" \
     -v "$(pwd)":/src -w /src "$IMAGE_NAME" make clean all
-mv installer.elf "$OUTPUT_ELF"
-make host HOST_PAYLOAD="$OUTPUT_ELF"
+# The installer keeps its plain name: the version lives inside the binary
+# (WAMP_FULL_VERSION) and in the /app/<version>/ cache layout it installs.
+# The host build embeds it under a versioned virtual name automatically
+# (HOST_PAYLOAD_VIRTUAL in the Makefile).
+make host HOST_PAYLOAD="installer.elf"
 mv wamphyre-autoloader-host.py "$HOST_PY"
-echo "Built $OUTPUT_ELF and $HOST_PY (Windows .exe is built by GitHub Actions)."
+echo "Built installer.elf and $HOST_PY (Windows .exe is built by GitHub Actions)."

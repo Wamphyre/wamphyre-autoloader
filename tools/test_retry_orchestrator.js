@@ -5,6 +5,13 @@
 // and fed console lines with a controllable clock. What matters is the
 // policy: clean failures reload the page automatically and within budget,
 // dirty failures never re-exploit, and a wedged pre-kernel stage recovers.
+//
+// The launch consent gate runs through the same fake DOM. The page script is
+// executed exactly like the builder executes it -- wrapped in an AsyncFunction
+// and awaited before boot -- so the awaited gate and a rejecting refusal
+// behave here as they do on the console: Run stores the choice for the
+// session and the chain proceeds, Exit rejects the startup so nothing at all
+// runs, and a remembered consent goes straight to the chain.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
@@ -14,8 +21,9 @@ const source = fs.readFileSync('frontend/autoloader/app.js', 'utf8');
 function makeElement(tag, id) {
   return {
     tagName: tag, id: id || '', nodeType: 1, children: [], style: {}, attributes: {},
-    textContent: '', className: '', parentNode: null,
+    textContent: '', className: '', parentNode: null, listeners: [],
     setAttribute(key, value) { this.attributes[key] = String(value); },
+    addEventListener(type, fn) { this.listeners.push(fn); },
     appendChild(child) { this.children.push(child); child.parentNode = this; return child; },
     removeChild(child) {
       const at = this.children.indexOf(child);
@@ -38,6 +46,10 @@ function makePage(options = {}) {
   let nextTimerId = 1;
   const store = {};
   if (options.kernelState) store['wamp_kernel_state'] = options.kernelState;
+  // The consent default matches a browser session that already confirmed the
+  // launch: every existing orchestrator test runs past the gate, and the
+  // consent tests below opt out with { consent: false }.
+  if (options.consent !== false) store['wamp_launch_consent'] = '1';
 
   const sandbox = {
     console,
@@ -77,13 +89,26 @@ function makePage(options = {}) {
     },
   };
   sandbox.window = sandbox;
+  sandbox.__pageSource = source;
   vm.createContext(sandbox);
   let bootRefused = null;
-  try {
-    vm.runInContext(source, sandbox);
-  } catch (error) {
-    bootRefused = error; // the startup gate refuses by throwing, like the builder documents
-  }
+  // Run the page script exactly like the builder does: wrapped in an
+  // AsyncFunction and awaited. The file's top level is that wrapper's body
+  // (frontend/autoloader/app.js explains why it carries no IIFE of its own),
+  // so its top-level await suspends the runner until the consent choice is
+  // made, and a refusal -- the latch or a declined launch -- rejects it. A
+  // rejection is the builder's documented way for a startup script to refuse
+  // boot, so it is captured as bootRefused; the promise never rejects past
+  // this point.
+  const startup = vm.runInContext(
+    '(async function () {\n' +
+    '  var AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;\n' +
+    '  await new AsyncFunction(__pageSource).call(window);\n' +
+    '})()',
+    sandbox, { filename: 'startup-runner.js' }
+  ).catch((error) => {
+    bootRefused = error;
+  });
 
   function tick(ms) {
     if (dead) {
@@ -131,7 +156,13 @@ function makePage(options = {}) {
   };
 
   return {
-    say, tick, label, state, consoleEl,
+    say, tick, label, state, consoleEl, startup,
+    find: (id) => findElement(body, id),
+    click(id) {
+      const el = findElement(body, id);
+      for (const fn of (el && el.listeners) || []) fn();
+    },
+    consented: () => store['wamp_launch_consent'] || null,
     reloadCalls: () => sandbox.location.reloadCalls,
     retries: () => sandbox.sessionStorage.getItem('wamp_rt_count'),
     setRetries(n) { if (n === null) sandbox.sessionStorage.removeItem('wamp_rt_count'); else sandbox.sessionStorage.setItem('wamp_rt_count', String(n)); },
@@ -379,6 +410,7 @@ function runSuccessFlow(page) {
     assert.match(page.label(), /Reboot required/);
 
     const next = makePage({ kernelState: 'dirty' });
+    await next.startup;
     assert(next.bootRefused(), 'the gate must refuse the boot after a dirty run');
     assert.match(next.label(), /Reboot required/);
     assert.equal(next.state(), 'error');
@@ -390,6 +422,7 @@ function runSuccessFlow(page) {
   // refuses, and the refusal display is final.
   {
     const page = makePage({ kernelState: 'inflight' });
+    await page.startup;
     assert(page.bootRefused(), 'the gate must refuse the boot after an interrupted run');
     assert.match(page.label(), /interrupted while the kernel exploit was in flight/);
     assert.equal(page.state(), 'error');
@@ -403,6 +436,7 @@ function runSuccessFlow(page) {
   // without any kernel work.
   {
     const page = makePage({ kernelState: 'clean' });
+    await page.startup;
     assert.ifError(page.bootRefused());
     runSuccessFlow(page);
     page.tick(120000);
@@ -410,6 +444,7 @@ function runSuccessFlow(page) {
     assert.equal(page.state(), 'done');
 
     const fresh = makePage();
+    await fresh.startup;
     assert.ifError(fresh.bootRefused());
     runSuccessFlow(fresh);
     assert.equal(fresh.state(), 'done');
@@ -551,5 +586,68 @@ function runSuccessFlow(page) {
     assert.equal(page.reloadCalls(), 1);
   }
 
-  console.log('Retry orchestrator checks passed: clean failures auto-retry within budget, dirty failures demand a reboot, the pre-kernel watchdog recovers a wedged page, the kernel phase is never interrupted, the kernel-state latch gates every reload, and a kernel-phase failure needs an explicit clean verdict to be retryable.');
+  // 25. The launch consent gate: with no stored choice the page asks before
+  // anything runs; Run remembers the choice for the session and the chain
+  // then proceeds normally, exactly as a fresh boot would.
+  {
+    const page = makePage({ consent: false });
+    assert.ok(page.find('consentOverlay'), 'a fresh session must be asked for consent');
+    assert.ok(page.find('consentRun'), 'the overlay must offer Run');
+    assert.ok(page.find('consentExit'), 'the overlay must offer Exit');
+    assert.match(page.label(), /Confirm the launch/);
+    page.click('consentRun');
+    await page.startup;
+    assert.equal(page.consented(), '1', 'Run must remember the choice for the session');
+    assert.ok(!page.find('consentOverlay'), 'the overlay must be gone after Run');
+    assert.ifError(page.bootRefused());
+    runSuccessFlow(page);
+    page.tick(120000);
+    assert.equal(page.state(), 'done');
+    assert.equal(page.reloadCalls(), 0);
+  }
+
+  // 26. Exit refuses the boot: the startup script rejects -- the builder's
+  // documented refusal -- so the module graph and the exploit never run, no
+  // kernel state is recorded, nothing may reload, and the overlay's final
+  // notice replaces the buttons.
+  {
+    const page = makePage({ consent: false });
+    page.click('consentExit');
+    await page.startup;
+    assert.ok(page.bootRefused(), 'Exit must refuse the boot');
+    assert.match(page.bootRefused().message, /launch declined/,
+      'the refusal must name the decline');
+    assert.match(page.label(), /Not launched/);
+    assert.ok(page.find('consentDeclinedLine'), 'the final notice must replace the buttons');
+    assert.equal(page.kernelState(), null, 'nothing ran, so no kernel state may exist');
+    assert.equal(page.consented(), null, 'Exit must not remember consent');
+    page.tick(120000);
+    assert.equal(page.reloadCalls(), 0, 'a declined launch must never reload');
+  }
+
+  // 27. The latch gate runs before the consent gate: a dirty or interrupted
+  // session is refused without asking the user to confirm a launch that will
+  // not happen.
+  {
+    const page = makePage({ kernelState: 'dirty', consent: false });
+    await page.startup;
+    assert.ok(page.bootRefused(), 'the latch must refuse before consent is asked');
+    assert.match(page.bootRefused().message, /reboot required/);
+    assert.ok(!page.find('consentOverlay'), 'a refused boot must never show the consent screen');
+    assert.equal(page.consented(), null);
+  }
+
+  // 28. A remembered consent never re-asks: the second load of a browser
+  // session -- an automatic retry reload, or a relaunch of the app -- goes
+  // straight to the chain, which is what keeps the retry countdown honest.
+  {
+    const page = makePage(); // default: the session already confirmed the launch
+    await page.startup;
+    assert.ok(!page.find('consentOverlay'), 'a remembered consent must not re-ask');
+    assert.ifError(page.bootRefused());
+    runSuccessFlow(page);
+    assert.equal(page.state(), 'done');
+  }
+
+  console.log('Retry orchestrator checks passed: clean failures auto-retry within budget, dirty failures demand a reboot, the pre-kernel watchdog recovers a wedged page, the kernel phase is never interrupted, the kernel-state latch gates every reload, a kernel-phase failure needs an explicit clean verdict to be retryable, and the launch consent gate asks before anything runs.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

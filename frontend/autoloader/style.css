@@ -161,10 +161,106 @@ body {
 #progressContainer[data-state="done"] #progressBar { background: #15803d; }
 #footer { width: 92%; }
 #footer a { color: inherit; text-decoration: none; }
+
+/* Launch consent overlay: the one screen before anything runs. It waits for
+   as long as the user needs -- no watchdog is armed while it is up. */
+#consentOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(5, 7, 13, 0.97);
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-box-orient: vertical;
+  -webkit-box-direction: normal;
+  -webkit-flex-direction: column;
+  flex-direction: column;
+  -webkit-box-align: center;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-box-pack: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+#consentOverlay #consentPanel {
+  width: 82%;
+  max-width: 880px;
+  max-height: 86%;
+  overflow-y: auto;
+  background: #0b1220;
+  border: 1px solid #1e3a5f;
+  border-radius: 10px;
+  padding: 1.5rem 2rem;
+}
+
+#consentOverlay #consentTitle {
+  font-size: 1.35rem;
+  color: #e2e8f0;
+  margin-bottom: 1rem;
+}
+
+#consentOverlay p {
+  font-size: 1rem;
+  line-height: 1.65;
+  color: #94a3b8;
+  margin-bottom: 0.9rem;
+}
+
+#consentOverlay #consentRebootLine { color: #fbbf24; }
+
+#consentOverlay #consentButtons {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-box-orient: horizontal;
+  -webkit-box-direction: normal;
+  -webkit-flex-direction: row;
+  flex-direction: row;
+  margin-top: 1.25rem;
+}
+
+#consentOverlay #consentButtons button {
+  -webkit-flex: 1;
+  flex: 1;
+  min-height: 3.4rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+}
+
+#consentOverlay #consentButtons button + button {
+  margin-left: 1rem;
+}
+
+#consentOverlay #consentRun {
+  background: #2563eb;
+  background: -webkit-linear-gradient(90deg, #2563eb 0%, #38bdf8 100%);
+  border: 1px solid #38bdf8;
+  color: #fff;
+}
+
+#consentOverlay #consentExit {
+  background: transparent;
+  border: 1px solid #4b5563;
+  color: #94a3b8;
+}
+
+#consentOverlay #consentDeclinedLine { color: #94a3b8; }
+
 @media (max-width: 600px) {
   #logWrapper, #progressContainer { width: 92%; }
   #logWrapper { height: 65%; font-size: 0.85rem; padding: 0.75rem; }
   #progressContainer { margin-top: 1rem; }
   #progressLabel { font-size: 0.85rem; padding: 0 0.5rem; text-align: center; }
   #footer { font-size: 0.65rem; }
+  #consentOverlay #consentPanel { padding: 1rem 1.25rem; }
+  #consentOverlay #consentTitle { font-size: 1.1rem; }
+  #consentOverlay p { font-size: 0.85rem; }
+  #consentOverlay #consentButtons button { font-size: 1rem; min-height: 3rem; }
 }

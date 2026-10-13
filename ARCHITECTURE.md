@@ -182,6 +182,26 @@ the all-clear the latch waits for. This closes the gap that actually crashes
 consoles: firing Relapse's AIO use-after-free a second time over a kernel the
 previous run may have left half-modified.
 
+The same script also shows a **launch consent screen** before any of that
+starts. The builder awaits each startup script before booting the module
+graph, and `frontend/autoloader/app.js` runs at that top level — it carries
+no IIFE of its own, because a nested async IIFE would detach from the
+builder's await and its rejections would stop nothing. An overlay asks the
+user to confirm the launch with `Run` or stop with `Exit`, warning that a
+console fresh from a power cut or a Rebuild Database should be rebooted once
+first: the kernel races are at their most fragile on a busy, just-rebuilt
+system, and a panic there is another improper shutdown for a freshly
+repaired filesystem. `Run` records `wamp_launch_consent` in sessionStorage —
+one choice per browser session, so the automatic retries never re-ask — and
+`Exit` stops boot with the builder's documented startup throw, leaving a
+final notice and running nothing at all. The kernel-state latch runs first,
+so dirty or interrupted sessions are refused without asking.
+`tools/test_retry_orchestrator.js` drives the overlay through the fake DOM
+with the page script executed exactly like the builder executes it: Run
+stores the choice and the chain proceeds, Exit rejects the startup so
+nothing runs, the latch refuses before consent is asked, and a remembered
+consent never re-asks.
+
 Override `PAGE_CSS` and `PAGE_JS` to pass other files to the upstream HTML builder.
 CSS is embedded after the default styles in the
 head. Each JavaScript file runs in its own async function before module boot and
@@ -213,8 +233,12 @@ vendored trees are plain directories (this fork does not use git submodules):
 remote-loader's nested copy of this repository is not a build input.
 
 `build_release.sh` pins `BUILD_VERSION` once across Docker, HTML/cache generation,
-and PC host packaging, then writes versioned ELF/Python artifacts. GitHub Actions
-also packages the Python host as a Windows executable.
+and PC host packaging. The installer keeps its plain name, `installer.elf` — the
+version lives inside the binary (`WAMP_FULL_VERSION`) and in the
+`/app/<version>/` cache layout it installs — while the PC host is written
+versioned and the host pages embed the installer under a versioned virtual
+name automatically. GitHub Actions also packages the Python host as a
+Windows executable.
 
 Remote-loader changes live on `refactor/minimal-autoloader`: `--embed URL=FILE`
 adds inline fetch resources, `--elfldr [URL=]FILE` overrides the loader binary without

@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.6.5] - 2026-10-13
+
+### Stability & Reliability
+
+* **Launch consent screen (Run/Exit).** Before anything runs — the module
+  graph has not even booted — the chain page now shows one confirmation
+  screen. It warns that a console fresh from a power cut or a Rebuild
+  Database should be rebooted once first (a kernel exploit on a busy,
+  just-rebuilt system is more likely to panic, a panic is another improper
+  shutdown, and on a freshly repaired filesystem that is the path to a
+  rebuild loop or a reformat), and that the `checking aio groups: n/N`
+  sweep lines are progress, not a freeze. `Run` starts the exploit and
+  remembers the choice in sessionStorage for the browser session, so
+  automatic retries never re-ask; `Exit` stops boot with the builder's
+  documented startup throw, leaving a final notice and running nothing at
+  all. The kernel-state latch still runs first, so dirty or interrupted
+  sessions are refused without asking. `app.js` now runs at the builder's
+  startup top level (no IIFE): a nested async IIFE would detach from the
+  builder's await and its rejections would stop nothing — top-level
+  `await` suspends boot until the choice is made, and a top-level `throw`
+  is what refuses it.
+* **The release installer keeps the name `installer.elf`.** The version
+  lives inside the binary (`WAMP_FULL_VERSION`) and in the
+  `/app/<version>/` cache layout it installs; the PC host is still written
+  as `wamphyre-autoloader-host_v<version>.py`, and the host pages embed
+  the installer under a versioned virtual name automatically
+  (`HOST_PAYLOAD_VIRTUAL` in the Makefile).
+
 ## [v0.6.4] - 2026-10-13
 
 * **Branding: the browser header says "by Wamphyre".** The page title, the

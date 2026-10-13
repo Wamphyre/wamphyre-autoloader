@@ -43,6 +43,25 @@ Want your own chain instead of the default one?
 When a config is found, it replaces the default chain completely, and Payload Manager is not launched automatically — add `pldmgr.elf` to your own list if you want it.
 
 <Details>
+<Summary><i>What happens before the exploit runs?</i></Summary>
+
+* **One confirmation screen, every launch.** Before anything runs -- the
+  WebKit stage included -- the page asks for confirmation with two buttons.
+  If the console just booted after a power cut, or it showed the "not turned
+  off properly" notice or a Rebuild Database screen, reboot it once before
+  continuing: a kernel exploit on a busy, just-rebuilt system is more likely
+  to panic, a panic is another improper shutdown, and on a freshly repaired
+  filesystem that is the path to a rebuild loop or a reformat.
+* **Run remembers, Exit stops.** `Run` starts the exploit and remembers the
+  choice for the browser session, so automatic retries never re-ask. `Exit`
+  stops there with nothing executed -- at that point no exploit code has run
+  at all.
+* The kernel-state latch is still checked first: a session that ended dirty
+  or was interrupted is refused without asking.
+
+</Details>
+
+<Details>
 <Summary><i>What happens if the exploit fails?</i></Summary>
 
 * **Clean failures retry themselves.** If the chain fails without leaving
