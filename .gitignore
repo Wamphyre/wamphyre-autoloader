@@ -39,3 +39,9 @@ __pycache__/
 *.pyc
 *.log
 .for_reference/
+
+# Local research material — never published: kernel dumps are derived from
+# Sony's proprietary firmware and the dump repositories carry no license.
+# RESEARCH/verify-offsets.js is kept here too; copy it out explicitly if it
+# should ever be published.
+RESEARCH/
