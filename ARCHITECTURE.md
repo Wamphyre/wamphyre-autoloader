@@ -227,8 +227,14 @@ stages the default chain under `third_party/ps5-unified-autoloader/payloads/`.
 The unified autoloader ELF is **built locally** (`make autoload-elf`) from the
 vendored sources — it is no longer downloaded from an upstream release — so it
 can embed the default chain: latest kstuff-lite and ShadowMountPlus, the
-vendored etaHEN (`payloads/default/`) with its config template, and Payload
-Manager as the manager UI. kexp is the binary bundled by remote-loader. The
+vendored etaHEN (`payloads/default/`) with its config template, Payload
+Manager as the manager UI, and the Byepervisor hypervisor unlock — vendored
+as source at `third_party/byepervisor-reborn/` (one patch: the upstream
+demonstration write into kernel text is removed; see its
+`WAMPHYRE_VENDOR_NOTE.md`), built with the same SDK and launched by the
+default chain **only on firmware 13.60, after everything else has
+started**, so the chain never waits on the Rest Mode round-trip the unlock
+needs. kexp is the binary bundled by remote-loader. The
 vendored trees are plain directories (this fork does not use git submodules):
 remote-loader's nested copy of this repository is not a build input.
 

@@ -30,7 +30,9 @@ ELF      := autoloader.elf
 # only because make treats chained-pattern products as intermediates wastes
 # a full recompile of ~9 MB of payload data on every invocation.
 .PRECIOUS: pldmgr_elf.c kstuff_elf.c smp_elf.c etahen_elf.c etahen_config.c \
-           pldmgr_elf.o kstuff_elf.o smp_elf.o etahen_elf.o etahen_config.o
+           byepervisor_elf.c \
+           pldmgr_elf.o kstuff_elf.o smp_elf.o etahen_elf.o etahen_config.o \
+           byepervisor_elf.o
 
 all: $(ELF)
 
@@ -52,7 +54,7 @@ SMP_ELF      := $(DEFAULT_DIR)/shadowmountplus.elf
 ETAHEN_ELF   := $(DEFAULT_DIR)/etaHEN.elf
 ETAHEN_CFG   := $(DEFAULT_DIR)/etahen-config.ini
 
-EMBED_SRCS := pldmgr_elf.c kstuff_elf.c smp_elf.c etahen_elf.c etahen_config.c
+EMBED_SRCS := pldmgr_elf.c kstuff_elf.c smp_elf.c etahen_elf.c etahen_config.c byepervisor_elf.c
 EMBED_OBJS := $(EMBED_SRCS:.c=.o)
 
 # The generator names the array after the input FILE NAME (non-alphanumeric

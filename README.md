@@ -15,6 +15,7 @@
 2. **ShadowMountPlus** — always the latest release from [drakmor/ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus), built in at build time
 3. **etaHEN** — vendored in this repository, with its config template installed on first run (built-in **FTP on port 1337**)
 4. **[Payload Manager](https://github.com/itsPLK/ps5-payload-manager)** — as the manager UI for everything else
+5. **Byepervisor** *(firmware 13.60 only)* — the hypervisor unlock, armed in the background after everything else has started; see below
 
 If you prefer your own chain, drop an `autoload.txt` (see below) — creating one always takes over completely.
 
@@ -58,6 +59,32 @@ When a config is found, it replaces the default chain completely, and Payload Ma
   at all.
 * The kernel-state latch is still checked first: a session that ended dirty
   or was interrupted is refused without asking.
+
+</Details>
+
+<Details>
+<Summary><i>The 13.60 hypervisor unlock (Byepervisor)</i></Summary>
+
+* **On firmware 13.60 the default chain ends by arming the hypervisor
+  unlock** — after kstuff-lite, ShadowMountPlus, etaHEN and Payload Manager
+  are already running, so nothing waits on it and the console behaves
+  exactly as always until you decide to use it.
+* **To activate it:** enter **Rest Mode** and resume (first set
+  *Settings → Power Saving → Features Available in Rest Mode → Supply Power
+  to USB Ports* to *Always*). On resume, the hypervisor's nested-paging
+  protections are gone until the next full power cycle — kernel `.text`
+  becomes readable and writable, which is what advanced payloads that need
+  real kernel patching require. Payloads you load afterwards (through
+  Payload Manager, for example) run on the unlocked kernel.
+* **It is optional.** Ignore the notification, skip the Rest Mode
+  round-trip, and you lose nothing: the jailbreak and the whole default
+  chain work without it. If the console powers off while resuming, the
+  unlock failed — just reboot and launch the autoloader again.
+* Vendored from [PS5Dev/Byepervisor-Reborn](https://github.com/PS5Dev/Byepervisor-Reborn)
+  (bug discovered by [theflow0](https://x.com/theflow0)), built from
+  source with one patch: the upstream demonstration write into kernel text
+  is removed. See
+  `third_party/byepervisor-reborn/WAMPHYRE_VENDOR_NOTE.md`.
 
 </Details>
 
@@ -147,6 +174,7 @@ Run `make test` for the offline checks, `make page` to regenerate the chain page
 * **[PLK](https://github.com/itsPLK)** — the upstream [ps5-webkit-autoloader](https://github.com/itsPLK/ps5-webkit-autoloader), [ps5-webkit-remote-loader](https://github.com/itsPLK/ps5-webkit-remote-loader), [elfldr](https://github.com/itsPLK/ps5-elfldr), [Payload Manager](https://github.com/itsPLK/ps5-payload-manager) and the unified autoloader this fork is built on
 * **[jordyidk](https://github.com/jordyidk)** & contributors — [slopkit (Poops)](https://github.com/jordyidk/slopkit)
 * **[soniciso1](https://github.com/soniciso1)**, **[ntfargo](https://github.com/ntfargo)** & contributors — [Relapse](https://github.com/soniciso1/relapse)
+* **[PS5Dev](https://github.com/PS5Dev)** & contributors — [Byepervisor Reborn](https://github.com/PS5Dev/Byepervisor-Reborn) (13.60 hypervisor unlock, vendored); the S3-resume hypervisor bug was discovered by **[theflow0](https://x.com/theflow0)**
 * **[EchoStretch](https://github.com/EchoStretch)** & contributors — [kstuff-lite](https://github.com/EchoStretch/kstuff-lite) (default chain)
 * **[drakmor](https://github.com/drakmor)** & contributors — [ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus) (default chain)
 * The etaHEN authors & contributors — etaHEN (vendored for the default chain)

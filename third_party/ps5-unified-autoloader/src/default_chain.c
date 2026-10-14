@@ -16,6 +16,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/* kernel_get_fw_version() — same SDK facility app_killer.c uses, to gate
+ * the Byepervisor unlock to the exact firmware its offsets cover. */
+#include <ps5/kernel.h>
+
 /* -----------------------------------------------------------------------
  * ensure_etahen_config
  *
@@ -107,6 +111,32 @@ int run_default_chain(void) {
         printf("[autoloader] ERROR: failed to launch pldmgr\n");
         fflush(stdout);
         errors++;
+    }
+
+    /* Byepervisor, the optional 13.60 hypervisor unlock. Launched after the
+     * whole chain so nothing ever waits on it: the exploit, kstuff-lite,
+     * ShadowMountPlus, etaHEN and Payload Manager are already running, and
+     * this payload merely arms itself in the background and tells the user
+     * to enter Rest Mode and resume when they want the unlock. The chain
+     * is complete without it, so a launch failure here is reported but does
+     * not fail the chain. The gate is exact (13.60 only) because the
+     * payload's offset table covers 13.00/13.20/13.60 and 13.60 is the
+     * only one this fork routes to it. */
+    {
+        uint32_t fw = kernel_get_fw_version();
+        if ((fw & 0xffff0000u) == 0x0d3c0000u) {
+            printf("[autoloader] FW 13.60: launching Byepervisor HV unlock\n");
+            fflush(stdout);
+            autoloader_notify("Launching: Byepervisor (13.60 HV unlock)");
+            if (launch_elf_from_memory(byepervisor_elf, byepervisor_elf_len) != 0) {
+                autoloader_notify("Could not launch Byepervisor (optional, skipped)");
+                printf("[autoloader] byepervisor launch failed (optional, skipped)\n");
+                fflush(stdout);
+            }
+        } else {
+            printf("[autoloader] Hypervisor unlock: not 13.60, skipped\n");
+            fflush(stdout);
+        }
     }
 
     autoloader_notify("Default chain complete (%d error(s))", errors);

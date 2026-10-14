@@ -32,6 +32,13 @@ extern const unsigned int etahen_config_ini_len;
 extern const uint8_t pldmgr_elf[];
 extern const unsigned int pldmgr_elf_len;
 
+/* Byepervisor (source-built from PS5Dev/Byepervisor-Reborn), the optional
+ * hypervisor unlock for firmware 13.60. Launched after the rest of the
+ * chain so nothing waits on it: it arms, notifies, and then waits in the
+ * background for the user to enter Rest Mode and resume. */
+extern const uint8_t byepervisor_elf[];
+extern const unsigned int byepervisor_elf_len;
+
 /* Delay between consecutive default-chain launches, in milliseconds.
  * Kernel-level payloads need time to finish patching before the next
  * one starts, the same spacing a user's own !5000 autoload lines give. */

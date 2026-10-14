@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.6.6] - 2026-10-14
+
+### Default payload chain
+
+* **Byepervisor hypervisor unlock on firmware 13.60.** The default chain
+  now ends by arming [PS5Dev/Byepervisor-Reborn](https://github.com/PS5Dev/Byepervisor-Reborn)
+  on 13.60, after kstuff-lite, ShadowMountPlus, etaHEN and Payload Manager
+  are already running — nothing in the chain waits on it, and the console
+  behaves exactly as before until the user chooses to enter Rest Mode and
+  resume. After that round-trip the hypervisor's nested-paging protections
+  are gone until the next full power cycle: kernel `.text` becomes
+  readable and writable, which is what advanced payloads that need real
+  kernel patching require, and payloads loaded afterwards (through Payload
+  Manager, for example) run on the unlocked kernel. The unlock is
+  optional — skipping the Rest Mode round-trip changes nothing about how
+  the jailbreak works. The payload is vendored as source at
+  `third_party/byepervisor-reborn/` (pinned upstream commit, plain
+  directory), built with the PS5 Payload SDK, and embedded with one patch:
+  the upstream demonstration write into kernel text is removed. Only 13.60
+  is routed to it, and the payload additionally self-guards on unsupported
+  firmware. Its offset table was verified byte-exactly against a live
+  13.60 kernel dump (`RESEARCH/verify-offsets.js`).
+
 ## [v0.6.5] - 2026-10-13
 
 ### Stability & Reliability
