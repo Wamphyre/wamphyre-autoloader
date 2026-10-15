@@ -13,7 +13,7 @@
 
 1. **kstuff-lite** — always the latest release from [EchoStretch/kstuff-lite](https://github.com/EchoStretch/kstuff-lite), built in at build time
 2. **ShadowMountPlus** — always the latest release from [drakmor/ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus), built in at build time — and **re-sent automatically every time you close a game**, so a stuck mount state can never wedge it: a fresh instance replaces the old one cleanly and rescans
-3. **etaHEN** — vendored in this repository, with its config template installed on first run (built-in **FTP on port 1337**)
+3. **etaHEN** — vendored in this repository, with its config template installed on first run (built-in **FTP on port 1337** and the app jailbreak homebrew apps need)
 4. **[Payload Manager](https://github.com/itsPLK/ps5-payload-manager)** — as the manager UI for everything else
 
 If you prefer your own chain, drop an `autoload.txt` (see below) — creating one always takes over completely.
@@ -41,6 +41,31 @@ Want your own chain instead of the default one?
 - Place it on the root of a USB drive or at `/data/ps5_autoloader` (USB wins).
 
 When a config is found, it replaces the default chain completely, and Payload Manager is not launched automatically — add `pldmgr.elf` to your own list if you want it.
+
+<Details>
+<Summary><i>ShadowMountPlus recommends against etaHEN — why does the chain include it?</i></Summary>
+
+* **The upstream note is about kstuff, not about etaHEN itself.** SMP 1.7
+  dropped its legacy kstuff auto-pause and delay autotuning, and its author
+  warns that etaHEN — which bundles its own kstuff and its own pause/unpause
+  handling — collides with the modern kstuff lifecycle SMP expects.
+* **The config template removes exactly that conflict.** etaHEN is
+  installed with `[kstuff] autoload=false`, so its embedded kstuff never
+  loads: the only kstuff running is the kstuff-lite the chain sent first.
+* **Nothing else in the chain provides what etaHEN does.** The app
+  jailbreak is what makes homebrew apps actually work (PKGi, the Homebrew
+  Store, the Lapy daemon and friends), plus the FTP server on port 1337
+  and the Toolbox. ShadowMountPlus itself scans etaHEN's
+  `/data/etaHEN/games` layout as a default scan root — the two are built
+  to interoperate.
+* **An existing etaHEN config is never touched.** If you already had one
+  with its kstuff autoload enabled, set `autoload=false` under `[kstuff]`
+  yourself, or you will have two kstuff instances.
+* **Want the pure SMP stack anyway?** Drop an `autoload.txt` with your own
+  chain (kstuff and ShadowMountPlus, no etaHEN) — creating one always
+  takes over completely.
+
+</Details>
 
 <Details>
 <Summary><i>What happens before the exploit runs?</i></Summary>
