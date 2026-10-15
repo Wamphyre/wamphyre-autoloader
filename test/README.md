@@ -55,32 +55,43 @@ at the commits kstuff-lite pins them to:
 The nested `.gitignore`/`.gitattributes` are kept on purpose, so local
 builds inside this tree do not dirty the wamphyre-autoloader repository.
 
-### Building
+### Building (local only — no cloud build)
 
-* **Via GitHub Actions (no local toolchain):** push this tree to a repo
-  of yours (or apply the patch on a fork of kstuff-lite) — the bundled
-  `.github/workflows/ci.yml` builds and uploads `kstuff.elf` as an
-  artifact. Use `KSTUFF_OBS=1` for the metrics/debug-reader build.
-* **Locally:** host `gcc` + `yasm` build the payload; the loader
-  (`ps5-kstuff-ldr/kstuff.elf`) additionally needs the
-  [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk) — the same
-  SDK wamphyre-autoloader already builds with:
+The payload needs host `gcc`, `yasm` and `nasm`; the loader additionally
+needs the [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk) —
+the same SDK wamphyre-autoloader already builds with. The SDK tarball
+(`ps5-payload-dev.tar.gz` from the pacbrew repo) extracts anywhere;
+`toolchain/prospero.mk` locates itself, so `PS5_PAYLOAD_SDK` can point
+at any directory. `yasm`/`nasm` install fine without root by unpacking
+the distro debs into a local prefix (`apt-get download yasm nasm` +
+`dpkg -x`, then prepend `usr/bin` to `PATH`).
 
-  ```sh
-  export PS5_PAYLOAD_SDK=/opt/ps5-payload-sdk
-  make -C ps5-kstuff-ldr KSTUFF_OBS=1        # or 0 for a release-style build
-  ```
+```sh
+export PS5_PAYLOAD_SDK=/path/to/ps5-payload-sdk
+export PATH=/path/to/yasm-nasm-bin:$PATH
+make -C ps5-kstuff KSTUFF_OBS=0       # payload.bin (builds BearSSL + isa-l too)
+make -C ps5-kstuff-ldr KSTUFF_OBS=0   # -> ps5-kstuff-ldr/kstuff.elf
+```
 
-  `ci-ps5-kstuff-ldr.sh` expects a real git checkout of kstuff-lite
-  (it walks submodule metadata); drive the Makefiles directly here.
+`KSTUFF_OBS=1` builds the instrumented variant (metrics + debug
+reader). `ci-ps5-kstuff-ldr.sh` expects a real git checkout of
+kstuff-lite — drive the Makefiles directly here.
+
+The artifact at the root of this folder,
+**`kstuff-lite-fpkg1360.elf`**, was built this way from this exact
+tree (sha256
+`9631144d07f77c8be051faf3d5a036e17710427e5883dab492f0009369200f8c`).
+It is a build output: the repository's `*.elf` ignore keeps it out of
+git unless you decide otherwise.
 
 ### Testing against wamphyre-autoloader (no rebuild needed)
 
-Rename the built loader (e.g. `kstuff-fpkg1360.elf`) and drop it on a
-USB stick together with `ps5_autoloader/autoload.txt`:
+Take `kstuff-lite-fpkg1360.elf` (the artifact at the root of this
+folder) and drop it on a USB stick together with
+`ps5_autoloader/autoload.txt`:
 
 ```text
-kstuff-fpkg1360.elf
+kstuff-lite-fpkg1360.elf
 !5000
 shadowmountplus.elf
 !5000
