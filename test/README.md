@@ -81,8 +81,11 @@ The artifact at the root of this folder,
 **`kstuff-lite-fpkg1360.elf`**, was built this way from this exact
 tree (sha256
 `9631144d07f77c8be051faf3d5a036e17710427e5883dab492f0009369200f8c`).
-It is a build output: the repository's `*.elf` ignore keeps it out of
-git unless you decide otherwise.
+Unlike the intermediate build outputs (kept out of git by the nested
+ignore), the artifact itself is committed: it is the exact binary the
+13.60 hardware tests run, and tracking it ties every test result to
+one reproducible input. A rebuilt replacement shows up as a normal
+modification — tracked files are unaffected by the `*.elf` ignore.
 
 ### Testing against wamphyre-autoloader (no rebuild needed)
 
