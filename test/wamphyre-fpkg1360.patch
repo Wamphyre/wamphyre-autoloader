@@ -1,0 +1,51 @@
+From 1309b07ed5f6bd76f21266a49963d5697d9cdcbe Mon Sep 17 00:00:00 2001
+From: Wamphyre <34998382+Wamphyre@users.noreply.github.com>
+Date: Thu, 15 Oct 2026 18:56:27 +0200
+Subject: [PATCH] Arm plaintext PPR interception on 13.60 (retail-validated
+ offsets)
+
+The FWVER > 0x1160 gate added in bd8928c kept the 12.x/13.x profiles
+unarmed pending retail validation. 13.60 now passes
+tools/validate_ppr_offsets.py byte-exact against a live retail
+kernel capture: both get-index sites and returns, the cleanup E8
+deltas 0x12B/0x15B, the clear-key miss, the verifyImage mailbox LR
+and the PACKED_STACK_150 no-key continuation. The verifyImage request
+layout the interception assumes (req[0]==1, req[3]==0x20000, physical
+destinations in req[4]/req[6]/req[7], sizes in req[9]) is confirmed
+by disassembly of the same capture. 12.x stays unarmed until its
+retail kernels are validated the same way; runtime behaviour on
+13.60 is pending a hardware test.
+---
+ ps5-kstuff/uelf/fpkg.c | 16 +++++++++++++---
+ 1 file changed, 13 insertions(+), 3 deletions(-)
+
+diff --git a/ps5-kstuff/uelf/fpkg.c b/ps5-kstuff/uelf/fpkg.c
+index 1d1b856..fcb9a14 100644
+--- a/ps5-kstuff/uelf/fpkg.c
++++ b/ps5-kstuff/uelf/fpkg.c
+@@ -97,9 +97,19 @@ struct ppr_profile
+  */
+ static const struct ppr_profile* get_ppr_profile(void)
+ {
+-    /* Keep the newer profiles and offsets available for later work, but do
+-     * not arm plaintext PPR interception above 11.60. */
+-    if(FWVER > 0x1160)
++    /* Keep the newer profiles and offsets available for later work. Above
++     * 11.60, arm only firmwares whose PPR offset set passes
++     * tools/validate_ppr_offsets.py against a retail kernel image:
++     * 13.60 passes byte-exact (both get-index sites and returns, the
++     * cleanup E8 deltas 0x12B/0x15B, the clear-key miss, the verifyImage
++     * mailbox LR and the PACKED_STACK_150 no-key continuation) against a
++     * live retail capture; the verifyImage request layout on 13.60
++     * (req[0]==1, req[3]==0x20000, physical destinations in
++     * req[4]/req[6]/req[7], sizes in req[9]) was confirmed by disassembly
++     * of the same capture. Runtime behaviour on 13.60 is pending a
++     * hardware test; 12.x stays unarmed until its retail kernels are
++     * validated the same way. */
++    if(FWVER > 0x1160 && FWVER != 0x1360)
+         return NULL;
+ 
+     static const struct ppr_profile fw1_early = {
+-- 
+2.53.0
+
