@@ -1,5 +1,4 @@
 import React from 'react'
-import { cn } from '../../utils/helpers'
 
 const Modal = ({ show, title, children, onClose, footer }) => {
   if (!show) return null

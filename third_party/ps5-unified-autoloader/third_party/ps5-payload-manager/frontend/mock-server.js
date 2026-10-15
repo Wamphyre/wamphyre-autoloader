@@ -1,9 +1,29 @@
 import express from 'express';
-import cors from 'cors';
+import { mutationPolicy } from './mock-policy.js';
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
-app.use(cors());
+app.use(mutationPolicy);
 app.use(express.json());
+app.use(express.text({ type: 'text/plain', limit: '1mb' }));
+app.use((req, res, next) => {
+  if (typeof req.body === 'string') {
+    try { req.body = JSON.parse(req.body); }
+    catch { return res.status(400).json({ error: 'Invalid JSON' }); }
+  }
+  next();
+});
+
+// Public development fixture files are fetched as ordinary cross-origin GETs
+// by the README view; this exception never authorizes API preflights/mutations.
+const publicFixture = (req, res, next) => {
+  res.set('Access-Control-Allow-Origin', '*'); next();
+};
+// Serve the locally generated details/ README folder (repo root)
+app.use('/details', publicFixture, express.static(path.resolve(process.cwd(), '..', 'details')));
+app.use('/test_icons.json', publicFixture, express.static(path.resolve(process.cwd(), '..', 'test_icons.json')));
+app.use('/test_repo.json', publicFixture, express.static(path.resolve(process.cwd(), '..', 'test_repo.json')));
 
 // Log all requests to terminal
 app.use((req, res, next) => {
@@ -19,24 +39,26 @@ let logs = [
   "[PLDMGR] Found 3 payloads on storage"
 ];
 
-const remoteRepository = [
-  {
-    name: "ftpsrv",
-    filename: "ftpsrv_v0.19.elf",
-    url: "https://itsplk.github.io/ps5_payloads/payloads/ftpsrv_v0.19.elf",
-    description: "A simple FTP server that accepts connections on port 2121",
-    version: "v0.19",
-    checksum: "e6c1babbfd5e1b766d12b659853b514b9faedf6333cbe8cb514b1a3e79b7ce39"
-  },
-  {
-    name: "kstuff-lite",
-    filename: "kstuff-lite_v1.03.elf",
-    url: "https://itsplk.github.io/ps5_payloads/payloads/kstuff-lite_v1.03.elf",
-    description: "Lite version of kstuff",
-    version: "v1.03",
-    checksum: "54df47a48d9c5ee4338ef70ba66093908a4f2845e53468bdd7c080b65d7488c1"
-  }
-];
+// Load the new-schema test repository (icons, author, release_notes, details_url)
+let remoteRepository = [];
+let remoteIcons = {};
+try {
+  const testRepo = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), '..', 'test_repo.json'), 'utf8'));
+  remoteRepository = testRepo.payloads || [];
+  remoteIcons = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "..", "test_icons.json"), "utf8")).icons;
+} catch {
+  console.log('[Mock] Could not load ../test_repo.json — using built-in payloads');
+  remoteRepository = [
+    {
+      name: "ftpsrv",
+      filename: "ftpsrv_v0.19.elf",
+      url: "https://itsplk.github.io/ps5_payloads/payloads/ftpsrv_v0.19.elf",
+      description: "A simple FTP server that accepts connections on port 2121",
+      version: "v0.19",
+      checksum: "e6c1babbfd5e1b766d12b659853b514b9faedf6333cbe8cb514b1a3e79b7ce39"
+    }
+  ];
+}
 
 const communityRepository = [
   {
@@ -44,14 +66,20 @@ const communityRepository = [
     filename: "ps5_hen_test_v1.0.elf",
     url: "https://example.com/payloads/ps5_hen_test_v1.0.elf",
     description: "Community hen test payload — no checksum",
-    version: "v1.0"
+    version: "v1.0",
+    author: "hen-community",
+    release_notes: "## v1.0\n\n- No icon set — exercises the deterministic fake-icon fallback",
+    details_url: "details/etahen.md"
   },
   {
     name: "Debug Tool",
     filename: "debug_tool_v2.1.elf",
     url: "https://example.com/payloads/debug_tool_v2.1.elf",
     description: "Debug utility from community repo",
-    version: "v2.1"
+    version: "v2.1",
+    author: "ps5-payload-dev",
+    release_notes: "## v2.1\n\n- Second community payload",
+    details_url: "details/elfldr.md"
   }
 ];
 
@@ -139,6 +167,13 @@ app.get('/get_config', (req, res) => {
   });
 });
 
+app.get('/repository_icons', (req, res) => {
+  const items = req.query.source === 'default' ? remoteRepository : req.query.source === 'source_community' ? communityRepository : null;
+  if (!items) return res.status(404).json({ icons: {} });
+  res.json({ icons: req.query.source === 'default' ? remoteIcons : {} });
+});
+app.post('/repository_cache_clear', (req, res) => res.json({ ok: true }));
+
 app.get('/repository_payloads', (req, res) => {
   // Return source-grouped format (multi-source mode always on in mock)
   res.json({
@@ -146,22 +181,26 @@ app.get('/repository_payloads', (req, res) => {
       {
         id: 'default',
         name: 'Official Repository',
+        url: 'http://localhost:8081/test_repo.json',
         last_update: lastRepositoryUpdate,
         error: false,
+        icons_revision: 'mock-icons-v1',
         payloads: remoteRepository.map(p => ({ ...p, source_id: 'default', source_name: 'Official Repository' }))
       },
       {
         id: 'source_community',
         name: 'Community Payloads',
+        url: 'https://example.com/community-payloads.json',
         last_update: lastRepositoryUpdate,
         error: false,
+        icons_revision: 'mock-icons-v1',
         payloads: communityRepository.map(p => ({ ...p, source_id: 'source_community', source_name: 'Community Payloads' }))
       }
     ]
   });
 });
 
-app.get('/repository_refresh', (req, res) => {
+app.post('/repository_refresh', (req, res) => {
   lastRepositoryUpdate = Math.floor(Date.now() / 1000);
   logs.push(`[PLDMGR] Repository manually refreshed`);
   res.json({
@@ -169,15 +208,19 @@ app.get('/repository_refresh', (req, res) => {
       {
         id: 'default',
         name: 'Official Repository',
+        url: 'http://localhost:8081/test_repo.json',
         last_update: lastRepositoryUpdate,
         error: false,
+        icons_revision: 'mock-icons-v1',
         payloads: remoteRepository.map(p => ({ ...p, source_id: 'default', source_name: 'Official Repository' }))
       },
       {
         id: 'source_community',
         name: 'Community Payloads',
+        url: 'https://example.com/community-payloads.json',
         last_update: lastRepositoryUpdate,
         error: false,
+        icons_revision: 'mock-icons-v1',
         payloads: communityRepository.map(p => ({ ...p, source_id: 'source_community', source_name: 'Community Payloads' }))
       }
     ]
@@ -197,7 +240,7 @@ app.post('/sources_set', (req, res) => {
   res.send('OK');
 });
 
-app.get('/sources_add', (req, res) => {
+app.post('/sources_add', (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ ok: false, message: 'Missing url' });
   // Mock: always succeed with a fake source name derived from the URL
@@ -208,7 +251,7 @@ app.get('/sources_add', (req, res) => {
   res.json({ ok: true, name: fakeName });
 });
 
-app.get('/sources_remove', (req, res) => {
+app.post('/sources_remove', (req, res) => {
   const idx = parseInt(req.query.index);
   if (isNaN(idx) || idx <= 0 || idx >= mockSources.length) {
     return res.status(400).json({ ok: false, message: 'Invalid index or cannot remove default source' });
@@ -218,7 +261,7 @@ app.get('/sources_remove', (req, res) => {
   res.json({ ok: true, message: 'OK' });
 });
 
-app.get('/repository_install', (req, res) => {
+app.post('/repository_install', (req, res) => {
   const { filename } = req.query;
   if (!filename) {
     return res.status(400).json({ ok: false, message: 'Missing filename' });
@@ -233,13 +276,13 @@ app.post('/set_config', (req, res) => {
   res.send('OK');
 });
 
-app.get(/^\/loadpayload:(.*)/, (req, res) => {
+app.post(/^\/loadpayload:(.*)/, (req, res) => {
   const path = req.params[0];
   logs.push(`[PLDMGR] Executing payload: ${path}`);
   res.send('OK');
 });
 
-app.get('/manage\\:delete', (req, res) => {
+app.post('/manage\\:delete', (req, res) => {
   const filename = req.query.filename;
   logs.push(`[PLDMGR] Deleted payload: ${filename}`);
   res.send('OK');
@@ -251,14 +294,14 @@ app.post('/manage\\:upload', (req, res) => {
   res.send('OK');
 });
 
-app.get('/abort', (req, res) => {
+app.post('/abort', (req, res) => {
   logs.push(`[PLDMGR] Autoload sequence aborted by user`);
   autoloadStatus.remaining = -1;
   autoloadStatus.current = "IDLE";
   res.send('OK');
 });
 
-app.get('/autoload_clear', (req, res) => {
+app.post('/autoload_clear', (req, res) => {
   logs.push(`[PLDMGR] Autoload status cleared`);
   autoloadStatus.done = 0;
   autoloadStatus.current = "IDLE";
@@ -266,13 +309,22 @@ app.get('/autoload_clear', (req, res) => {
   res.send('OK');
 });
 
-app.get('/shutdown', (req, res) => {
+app.post('/shutdown', (req, res) => {
   logs.push(`[PLDMGR] System shutdown requested`);
   res.send('Shutting down...');
   process.exit(0);
 });
 
 // SSE for logs
+app.get('/processes_list', (req, res) => res.json([]));
+app.get('/history_list', (req, res) => res.json([]));
+app.post('/process_kill', (req, res) => res.json({ ok: true }));
+app.get('/usb_move_check', (req, res) => res.json({
+  status: 'ready', path: req.query.path, filename: path.basename(req.query.path || 'test.elf'),
+  folder_exists: false, existing: null,
+}));
+app.post('/usb_move_perform', (req, res) => res.json({ ok: true, message: 'Mock import complete' }));
+
 app.get('/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');

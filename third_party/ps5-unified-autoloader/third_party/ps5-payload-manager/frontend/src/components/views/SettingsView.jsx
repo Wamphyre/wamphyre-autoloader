@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Terminal, ChevronRight, Globe, Languages } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../utils/helpers'
+import { LANGUAGE_NAMES } from '../../utils/localeSupport'
 
 const FOLLOW_BROWSER_LANGUAGE = '__auto__'
 
@@ -40,26 +41,30 @@ const SettingRow = ({ title, description, children, icon: Icon, vertical }) => (
   </div>
 )
 
-const SettingsView = ({ config, onSaveConfig, setShowLogs, onNavigate }) => {
+const SettingsView = ({ config, onSaveConfig, setShowLogs, onNavigate, onClearCache }) => {
   const { t, i18n } = useTranslation()
   const autoOpen = config.AUTO_BROWSER_OPEN !== false
+  const killDiscPlayer = config.KILL_DISC_PLAYER_ON_STARTUP !== false
   const autoInstall = config.AUTO_INSTALL_APP !== false
-  const autoloadDelay = config.AUTOLOAD_DELAY || 5
+  const autoloadDelay = config.AUTOLOAD_DELAY ?? 5
   const multiSources = config.MULTI_SOURCES_ENABLED === true
   const [followBrowserLanguage, setFollowBrowserLanguage] = useState(isFollowingBrowserLanguage)
 
-  const getLanguageDisplayName = (lang) => {
-    let displayName = lang;
+  const [clearingCache, setClearingCache] = useState(false)
+  const [cacheMessage, setCacheMessage] = useState('')
+  const handleClearCache = async () => {
+    if (clearingCache) return
+    setClearingCache(true)
+    setCacheMessage('')
     try {
-      const baseLang = lang.split('-')[0];
-      const lookupLang = lang.startsWith('zh') ? lang : baseLang;
-      displayName = new Intl.DisplayNames([lang], { type: 'language' }).of(lookupLang);
-      displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+      await onClearCache()
+      setCacheMessage(t('settings.cache_cleared', 'Repository cache cleared.'))
     } catch {
-      return lang;
-    }
-    return displayName;
-  };
+      setCacheMessage(t('settings.cache_failed', 'Could not clear repository cache.'))
+    } finally { setClearingCache(false) }
+  }
+
+  const getLanguageDisplayName = lang => LANGUAGE_NAMES[lang] || lang;
 
   const currentLang = i18n.resolvedLanguage || i18n.language || 'en';
   const selectedLanguage = followBrowserLanguage ? FOLLOW_BROWSER_LANGUAGE : currentLang;
@@ -165,15 +170,15 @@ const SettingsView = ({ config, onSaveConfig, setShowLogs, onNavigate }) => {
             description={t("settings.kill_disc_desc", "Automatically terminate the Disc Player application on startup (for BD-JB users).")}
           >
             <button
-              onClick={() => onSaveConfig({ KILL_DISC_PLAYER_ON_STARTUP: !config.KILL_DISC_PLAYER_ON_STARTUP })}
+              onClick={() => onSaveConfig({ KILL_DISC_PLAYER_ON_STARTUP: !killDiscPlayer })}
               className={cn(
                 "w-14 h-7 md:w-20 md:h-10 rounded-full transition-all relative p-1 md:p-1.5",
-                config.KILL_DISC_PLAYER_ON_STARTUP !== false ? "bg-ps-blue" : "bg-white/10"
+                killDiscPlayer ? "bg-ps-blue" : "bg-white/10"
               )}
             >
               <div className={cn(
                 "w-5 h-5 md:w-7 md:h-7 bg-white rounded-full transition-all",
-                config.KILL_DISC_PLAYER_ON_STARTUP !== false ? "translate-x-7 md:translate-x-10" : "translate-x-0"
+                killDiscPlayer ? "translate-x-7 md:translate-x-10" : "translate-x-0"
               )} />
             </button>
           </SettingRow>
@@ -250,6 +255,19 @@ const SettingsView = ({ config, onSaveConfig, setShowLogs, onNavigate }) => {
                 multiSources ? "translate-x-7 md:translate-x-10" : "translate-x-0"
               )} />
             </button>
+          </SettingRow>
+
+          <SettingRow
+            title={t('settings.cache_title', 'Repository Cache')}
+            description={t('settings.cache_desc', 'Clear downloaded catalogs and icons, then fetch fresh copies. Installed payloads and your settings are preserved.')}
+            icon={Globe}
+            vertical
+          >
+            <button onClick={handleClearCache} disabled={clearingCache}
+              className="px-5 py-3 rounded-xl bg-white/10 hover:bg-ps-blue/20 disabled:opacity-50 font-bold">
+              {clearingCache ? t('settings.cache_clearing', 'Clearing…') : t('settings.cache_clear', 'Clear Cache')}
+            </button>
+            {cacheMessage && <p role="status" className="mt-3 text-sm text-zinc-400">{cacheMessage}</p>}
           </SettingRow>
 
           {multiSources && (

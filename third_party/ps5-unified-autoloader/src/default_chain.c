@@ -4,7 +4,9 @@
  * Runs when no autoload.txt exists: ensure etaHEN has a config (built-in
  * FTP on port 1337, FPS meter off — an existing config is never touched),
  * launch kstuff-lite, ShadowMountPlus and etaHEN with a fixed delay
- * between them, then start Payload Manager as the manager UI.
+ * between them, then start Payload Manager as the manager UI. Afterwards
+ * run_smp_reload_watchdog() keeps the autoloader alive to re-send
+ * ShadowMountPlus after every game close.
  */
 
 #include "default_chain.h"
@@ -15,10 +17,6 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
-/* kernel_get_fw_version() — same SDK facility app_killer.c uses, to gate
- * the Byepervisor unlock to the exact firmware its offsets cover. */
-#include <ps5/kernel.h>
 
 /* -----------------------------------------------------------------------
  * ensure_etahen_config
@@ -113,32 +111,70 @@ int run_default_chain(void) {
         errors++;
     }
 
-    /* Byepervisor, the optional 13.60 hypervisor unlock. Launched after the
-     * whole chain so nothing ever waits on it: the exploit, kstuff-lite,
-     * ShadowMountPlus, etaHEN and Payload Manager are already running, and
-     * this payload merely arms itself in the background and tells the user
-     * to enter Rest Mode and resume when they want the unlock. The chain
-     * is complete without it, so a launch failure here is reported but does
-     * not fail the chain. The gate is exact (13.60 only) because the
-     * payload's offset table covers 13.00/13.20/13.60 and 13.60 is the
-     * only one this fork routes to it. */
-    {
-        uint32_t fw = kernel_get_fw_version();
-        if ((fw & 0xffff0000u) == 0x0d3c0000u) {
-            printf("[autoloader] FW 13.60: launching Byepervisor HV unlock\n");
-            fflush(stdout);
-            autoloader_notify("Launching: Byepervisor (13.60 HV unlock)");
-            if (launch_elf_from_memory(byepervisor_elf, byepervisor_elf_len) != 0) {
-                autoloader_notify("Could not launch Byepervisor (optional, skipped)");
-                printf("[autoloader] byepervisor launch failed (optional, skipped)\n");
-                fflush(stdout);
-            }
-        } else {
-            printf("[autoloader] Hypervisor unlock: not 13.60, skipped\n");
-            fflush(stdout);
-        }
-    }
-
     autoloader_notify("Default chain complete (%d error(s))", errors);
     return errors ? -1 : 0;
+}
+
+/* -----------------------------------------------------------------------
+ * run_smp_reload_watchdog
+ *
+ * ShadowMountPlus tracks mounted/prepared titles and kstuff's auto-pause
+ * with per-title runtime state that can go stale after a game closes
+ * (upstream issue #153, still open in 1.7-beta5fix1): once that happens,
+ * every later scan stays queued and no new title mounts until the SMP
+ * payload is re-sent. Re-sending is the documented workaround, and it is
+ * safe by design: a fresh SMP instance finds the running one, SIGTERMs
+ * it, waits for it to exit — its shutdown path restores kstuff and
+ * releases its mounts — and then takes over with clean state and a fresh
+ * scan. This watchdog automates it: poll the running big app and, each
+ * time one closes, re-send the embedded SMP ELF.
+ *
+ * It never returns; the autoloader process stays alive as a small
+ * daemon for the rest of the session. The poll is a cheap LncUtil query,
+ * and the chain was already complete before this runs, so nothing in it
+ * ever waits on the watchdog.
+ * ----------------------------------------------------------------------- */
+
+/* LncUtil lives in libSceSystemService (already linked); the same extern
+ * app_killer.c uses for the disc-player teardown. */
+extern int sceLncUtilGetAppIdOfRunningBigApp(void);
+
+void run_smp_reload_watchdog(void) {
+    printf("[autoloader] SMP reload watchdog active\n");
+    fflush(stdout);
+
+    /* Nothing is running right after the chain: no reload until the user
+     * actually launches and closes something. */
+    uint32_t prev = (uint32_t)sceLncUtilGetAppIdOfRunningBigApp();
+
+    for (;;) {
+        usleep(SMP_RELOAD_POLL_MS * 1000);
+
+        uint32_t cur = (uint32_t)sceLncUtilGetAppIdOfRunningBigApp();
+        if (prev != 0xffffffffu && cur == 0xffffffffu) {
+            printf("[autoloader] app 0x%08x closed; reloading ShadowMountPlus\n", prev);
+            fflush(stdout);
+
+            /* Give SMP time to run its own stop handling first: the
+             * kstuff restore and mount cleanup of the closing title are
+             * exactly what a clean shutdown wants to finish. */
+            usleep(SMP_RELOAD_DELAY_MS * 1000);
+
+            autoloader_notify("Reloading: ShadowMountPlus");
+            if (launch_elf_from_memory(smp_elf, smp_elf_len) != 0) {
+                autoloader_notify("Failed to reload ShadowMountPlus");
+                printf("[autoloader] smp reload failed\n");
+            } else {
+                printf("[autoloader] smp reloaded\n");
+            }
+            fflush(stdout);
+
+            /* Let the fresh instance finish its startup scan and hook
+             * install before watching for the next close; a game that
+             * already started meanwhile is tracked by the new instance. */
+            usleep(SMP_RELOAD_SETTLE_MS * 1000);
+            cur = (uint32_t)sceLncUtilGetAppIdOfRunningBigApp();
+        }
+        prev = cur;
+    }
 }

@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import { createRequestScope } from '../../utils/requestScope'
+import { apiFetch, mutationFetch } from '../../utils/mutationRequest'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Cpu, RefreshCw, XCircle, Search, AlertTriangle, Activity, Loader2, Info, Trash2 } from 'lucide-react'
 import { useTranslation, Trans } from 'react-i18next'
-import { cn, isPS5 } from '../../utils/helpers'
+import { cn } from '../../utils/helpers'
 
-const ActiveProcessesView = ({ ip, addToast, showConfirm }) => {
+const ActiveProcessesView = ({ addToast, showConfirm }) => {
   const { t } = useTranslation()
   const [processes, setProcesses] = useState([])
   const [loading, setLoading] = useState(true)
@@ -11,34 +13,46 @@ const ActiveProcessesView = ({ ip, addToast, showConfirm }) => {
   const [showAll, setShowAll] = useState(false)
   const [search, setSearch] = useState('')
 
-  const fetchProcesses = async (isBackground = false) => {
-    if (!isBackground) setLoading(true)
-    if (!isBackground) setError(false)
+  const requestRef = useRef(null)
+  const killRef = useRef(null)
+  const aliveRef = useRef(false)
+  const refreshTimerRef = useRef(null)
+  const fetchProcesses = useCallback(async () => {
+    requestRef.current?.abort()
+    const controller = createRequestScope()
+    requestRef.current = controller
     try {
-      const res = await fetch('/processes_list')
+      const res = await apiFetch('/processes_list', { signal: controller.signal, cache: 'no-store' })
       if (!res.ok) throw new Error()
       const data = await res.json()
-      if (data && data.processes) {
-        setProcesses(data.processes)
-      } else {
-        setProcesses([])
-      }
+      if (controller.aborted) return
+      if (!Array.isArray(data?.processes)) throw new Error()
+      const entries = data.processes.filter(p => Number.isInteger(p.pid) && p.pid >= 0 &&
+        typeof p.name === 'string' && Number.isFinite(p.memory) && p.memory >= 0)
+      setProcesses(entries)
+      setError(false)
     } catch {
-      if (!isBackground) setError(true)
+      if (!controller.aborted) setError(true)
     } finally {
-      if (!isBackground) setLoading(false)
+      if (!controller.aborted) setLoading(false)
     }
-  }
-
-  useEffect(() => {
-    fetchProcesses()
-    
-    const intervalId = setInterval(() => {
-      fetchProcesses(true)
-    }, 15000)
-
-    return () => clearInterval(intervalId)
   }, [])
+  const refresh = () => { setLoading(true); setError(false); void fetchProcesses() }
+  useEffect(() => {
+    aliveRef.current = true
+    // StrictMode's setup/cleanup probe cancels this startup task before it can
+    // issue a duplicate request; initial loading is already visible.
+    const initialId = setTimeout(fetchProcesses, 0)
+    const intervalId = setInterval(fetchProcesses, 15000)
+    return () => {
+      aliveRef.current = false
+      clearTimeout(initialId)
+      clearInterval(intervalId)
+      clearTimeout(refreshTimerRef.current)
+      requestRef.current?.abort()
+      killRef.current?.abort()
+    }
+  }, [fetchProcesses])
 
   const filteredProcesses = useMemo(() => {
     let result = processes
@@ -63,17 +77,23 @@ const ActiveProcessesView = ({ ip, addToast, showConfirm }) => {
       t("active_processes.kill_modal_title", "Kill Process"),
       t("active_processes.kill_modal_message", "Are you sure you want to kill {{name}} (PID: {{pid}})?", { name: proc.name, pid: proc.pid }),
       async () => {
+        if (!aliveRef.current) return
+        const controller = createRequestScope()
+        killRef.current = controller
         try {
-          const res = await fetch(`/process_kill?pid=${proc.pid}`)
+          const res = await mutationFetch(`/process_kill?pid=${proc.pid}`, { signal: controller.signal })
           const data = await res.json()
+          if (controller.aborted) return
           if (res.ok) {
             setProcesses(prev => prev.filter(p => p.pid !== proc.pid));
             addToast(t("active_processes.kill_success", "Successfully killed {{name}}", { name: proc.name }))
-            setTimeout(() => fetchProcesses(), 1000);
+            clearTimeout(refreshTimerRef.current);
+            refreshTimerRef.current = setTimeout(fetchProcesses, 1000);
           } else {
             addToast(data.error || t("active_processes.kill_failed", "Failed to kill {{name}}", { name: proc.name }), "error")
           }
-        } catch (e) {
+        } catch {
+          if (controller.aborted) return
           addToast(t("active_processes.kill_error", "Error killing {{name}}", { name: proc.name }), "error")
         }
       }
@@ -130,7 +150,7 @@ const ActiveProcessesView = ({ ip, addToast, showConfirm }) => {
           <div className="py-12 bg-red-500/10 border border-red-500/20 rounded-2xl flex flex-col items-center justify-center space-y-4">
             <AlertTriangle className="w-10 h-10 text-red-500" />
             <p className="text-red-400 font-bold">{t("active_processes.error_loading", "Failed to load processes")}</p>
-            <button onClick={fetchProcesses} className="px-6 py-2 bg-red-500 hover:bg-red-400 text-white rounded-xl font-bold transition-colors">
+            <button onClick={refresh} className="px-6 py-2 bg-red-500 hover:bg-red-400 text-white rounded-xl font-bold transition-colors">
               {t("active_processes.retry", "Retry")}
             </button>
           </div>

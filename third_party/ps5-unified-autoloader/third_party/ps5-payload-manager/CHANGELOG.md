@@ -1,3 +1,31 @@
+## v0.6.1
+
+### 🛠️ Backend & Bug Fixes
+- Restored automatic Disc Player termination on startup for BD-JB users, which was removed in v0.6.0.  
+This is still useful for users on older BD-JB autoloader builds (lower than v1.4.0).
+
+**Full Changelog**: [v0.6.0...v0.6.1](https://github.com/itsPLK/ps5-payload-manager/compare/v0.6.0...v0.6.1)
+
+## v0.6.0
+
+### 🚀 Features & UX Improvements
+* **Repository Browser Overhaul**: Rebuilt **Get Payloads** into a full store experience with a card grid, search, source filtering, and live install status badges.
+* **Payload Details**: Added a dedicated details page showing payload README documentation and version info.
+* **Cross-Browser Favorites**: Dashboard favorites are now stored on the console, keeping your favorites and custom order synced across all browsers and devices.
+* **Controller & History Navigation**: Pressing Back / Circle on your PS5 controller or browser now closes modals, details, and edit modes instead of exiting the browser. Added URL links for direct navigation.
+* **UI Polish & Quality of Life**: Refreshed Autoload screen styling with improved auto-saving, redesigned payload launch overlay, support for custom repository payload icons and source badges, and cleaner notification toasts.
+* **New Language**:
+  * **Dutch** (thanks to JensJ56)
+* **Translations**: Updated localization files across all 17 supported languages.
+
+### 🛠️ Backend & Bug Fixes
+* **Autoload Network Resilience**: Fixed repository network timeouts on boot delaying the autoload sequence ([#109](https://github.com/itsPLK/ps5-payload-manager/pull/109), thanks to [kianborg](https://github.com/kianborg)).
+* **Fresh PS5 Install Fix**: Fixed installer failing on brand new PS5 systems ([#108](https://github.com/itsPLK/ps5-payload-manager/issues/108)).
+* **Security & Verification**: Added checksum verification for repository downloads and restricted actions to POST requests with origin validation.
+* **Stability Improvements**: Resolved crashes with large repository catalogs, improved memory handling, fixed connection cleanup, and other minor stability improvements and bug fixes.
+
+**Full Changelog**: [v0.5.2...v0.6.0](https://github.com/itsPLK/ps5-payload-manager/compare/v0.5.2...v0.6.0)
+
 ## v0.5.2
 - Rebuilt with latest SDK
 

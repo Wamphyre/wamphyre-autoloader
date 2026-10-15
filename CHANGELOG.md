@@ -2,6 +2,53 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.6.7] - 2026-10-15
+
+### Default payload chain
+
+* **ShadowMountPlus is reloaded automatically after every game close.**
+  SMP keeps per-title runtime state (mounted/prepared books, kstuff's
+  auto-pause) that can go stale after a game closes on some firmwares
+  (upstream issue #153, open in 1.7-beta5fix1): once wedged, every later
+  scan stays queued and no new title mounts until the payload is
+  re-sent — the "mount one app and no other mounts afterwards" failure,
+  while already-installed homebrew keeps launching because it never goes
+  through SMP's mount pipeline. The unified autoloader now stays alive
+  after the default chain as a small watchdog: it polls the running big
+  app and, each time one closes, re-sends the embedded SMP ELF. Re-sending
+  is the upstream-documented workaround and is safe by design — a fresh
+  instance SIGTERMs the old one, whose shutdown path restores kstuff and
+  releases its mounts, then takes over with clean state and rescans. A
+  reload also repairs an SMP launch that failed during the chain itself.
+  Custom `autoload.txt` chains are unchanged and keep full control.
+* **Byepervisor removed from the default chain.** The v0.6.6 chain gate
+  never actually launched it: it compared `kernel_get_fw_version()` against
+  `0x0d3c0000`, but the kernel reports `0x13600000` on 13.60 (as the
+  payload's own `kdlsym()` shows), so the step was skipped silently on every
+  console. Fixing the constant would have made it launch for real — and
+  hardware testing plus three upstream reports on 13.60 (Byepervisor-Reborn
+  issues #8, #14, #15, all after our pinned commit) show that arming the
+  hook freezes and powers the console off within seconds, before Rest Mode
+  is even entered; upstream #16 also reports legitimate licences revoked
+  after use. A chain step that can power off the console contradicts what
+  this fork exists for, so the launch step, the embedded payload and its
+  README section are removed. The source stays vendored (inert) at
+  `third_party/byepervisor-reborn/` with an updated
+  `WAMPHYRE_VENDOR_NOTE.md` documenting why, so it can return once upstream
+  fixes the stability problems. Anyone who wants to experiment can still
+  build it from that tree and send it manually through Payload Manager, at
+  their own risk.
+* **Payload Manager updated to v0.6.1** (pinned release asset; was v0.5.2).
+  Upstream v0.6.0 rebuilt the repository browser into a full store view
+  with search and live install badges, added cross-browser favorites stored
+  on the console, and controller/History navigation for modals; v0.6.1
+  restored automatic Disc Player termination on startup for BD-JB users.
+  The vendored source tree under
+  `third_party/ps5-unified-autoloader/third_party/ps5-payload-manager` is
+  updated to the same tag. (pldmgr self-updates on the console from its own
+  repository anyway — the pin only sets which version a fresh install
+  starts from.)
+
 ## [v0.6.6] - 2026-10-14
 
 ### Default payload chain
