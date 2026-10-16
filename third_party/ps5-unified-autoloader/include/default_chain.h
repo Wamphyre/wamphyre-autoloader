@@ -47,6 +47,15 @@ extern const unsigned int pldmgr_elf_len;
 #define SMP_RELOAD_DELAY_MS  8000
 #define SMP_RELOAD_SETTLE_MS 5000
 
+/* Bounded retries for the re-send itself, in milliseconds. elfldr reads
+ * exact lengths derived from the ELF header (MSG_WAITALL) and discards a
+ * short delivery without executing it, so a failed attempt can never
+ * leave a half-loaded payload behind: every retry is a fresh connection
+ * plus a complete re-send. If elfldr is really gone, the retries fail
+ * fast on the refused connect and the session keeps polling. */
+#define SMP_RELOAD_ATTEMPTS  3
+#define SMP_RELOAD_RETRY_MS  2000
+
 /* Launch the default chain and then Payload Manager.
  * Returns 0 if every payload was handed to elfldr, -1 otherwise. */
 int run_default_chain(void);

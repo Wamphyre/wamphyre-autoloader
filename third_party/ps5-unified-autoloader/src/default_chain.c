@@ -161,11 +161,34 @@ void run_smp_reload_watchdog(void) {
             usleep(SMP_RELOAD_DELAY_MS * 1000);
 
             autoloader_notify("Reloading: ShadowMountPlus");
-            if (launch_elf_from_memory(smp_elf, smp_elf_len) != 0) {
-                autoloader_notify("Failed to reload ShadowMountPlus");
-                printf("[autoloader] smp reload failed\n");
-            } else {
+            /* Bounded retries: a single transient send failure (a briefly
+             * wedged elfldr, a lost loopback packet) used to leave the
+             * session without a working SMP until the next app closed,
+             * which is exactly the wedge this watchdog exists to prevent.
+             * Each attempt is a fresh connection plus a complete re-send;
+             * a truncated attempt is always discarded by elfldr's
+             * exact-size reads and never executes. If elfldr itself is
+             * gone, the retries fail fast on the refused connect. */
+            int reloaded = 0;
+            for (int attempt = 1; attempt <= SMP_RELOAD_ATTEMPTS; attempt++) {
+                if (attempt > 1) {
+                    printf("[autoloader] smp reload: retrying (attempt %d of %d)\n",
+                           attempt, SMP_RELOAD_ATTEMPTS);
+                    fflush(stdout);
+                    usleep(SMP_RELOAD_RETRY_MS * 1000);
+                }
+                if (launch_elf_from_memory(smp_elf, smp_elf_len) == 0) {
+                    reloaded = 1;
+                    break;
+                }
+            }
+
+            if (reloaded) {
                 printf("[autoloader] smp reloaded\n");
+            } else {
+                autoloader_notify("Failed to reload ShadowMountPlus");
+                printf("[autoloader] smp reload failed (%d attempt(s))\n",
+                       SMP_RELOAD_ATTEMPTS);
             }
             fflush(stdout);
 

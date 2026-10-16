@@ -127,7 +127,10 @@ providing the log panel, progress bar, and status footer on both chain pages and
 PC setup page. The script moves the existing console into the panel and observes
 its log lines for progress; it never wraps the exploit or replaces its APIs.
 Completion waits for the queue summary, including payload cleanup. An existing
-ELF loader is shown as already running, and failures stay visible in the log.
+ELF loader is shown as already running, and failures stay visible in the log —
+unless the session itself failed to hand over the autoload (a transfer that
+died after connecting), in which case a later "already running" loader demands
+a reboot instead of claiming nothing-to-do.
 `tools/gen_version.py --page-config` supplies the footer's version and build time
 as an inline startup script. No additional network resources are needed.
 
@@ -161,7 +164,11 @@ kernel state the exploits carefully put back. What it does instead:
   the reboot demand, or erase the latch.
 * Success markers ("Autoload: sent", an already-running loader) clear the retry
   counter, and a late success even cancels a pending retry countdown — unless
-  the run was already dirty, in which case the reboot demand stands.
+  the run was already dirty, in which case the reboot demand stands. An
+  already-running stop is only a success when the session never failed a
+  hand-over: a mid-transfer `ELF transfer failed after N bytes` is remembered
+  for the next load, whose already-running stop then says the truth (nothing
+  was loaded; reboot) instead of "Nothing to do".
 * A payload that overruns its queue deadline stops the queue instead of moving
   on: the deadline only ends the wait, it does not cancel the payload, so the
   next payload must never start alongside one that may still be executing.
@@ -228,7 +235,14 @@ The unified autoloader ELF is **built locally** (`make autoload-elf`) from the
 vendored sources — it is no longer downloaded from an upstream release — so it
 can embed the default chain: latest kstuff-lite and ShadowMountPlus, the
 vendored etaHEN (`payloads/default/`) with its config template, and Payload
-Manager as the manager UI. The Byepervisor hypervisor unlock is vendored
+Manager as the manager UI. Native stability hardening in the fork's copy:
+every payload send to elfldr carries a 30 s `SO_SNDTIMEO` (elfldr's
+exact-length `MSG_WAITALL` reads would otherwise let a stalled delivery block
+the chain forever, and the closing of a timed-out socket is what makes elfldr
+discard the truncated stream), and the app-close watchdog re-sends the
+ShadowMountPlus ELF up to 3 times, 2 s apart, before reporting failure — a
+single transient send failure must not leave the session without a working
+SMP until the next app close. The Byepervisor hypervisor unlock is vendored
 as source at `third_party/byepervisor-reborn/` but is **not part of the
 chain**: arming it was found to freeze/power off consoles on 13.60 (see
 its `WAMPHYRE_VENDOR_NOTE.md`), so the source is kept inert until an

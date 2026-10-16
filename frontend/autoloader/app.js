@@ -20,6 +20,13 @@
 // kernel exploit again over an unknown kernel state is the classic crash.
 // Rebooting the console clears sessionStorage, which is exactly the all-clear.
 //
+// Hand-over honesty: if the autoload transfer died part-way, the loader stays
+// up with nothing loaded. The failed run is remembered in sessionStorage too
+// ('wamp_elf_partial'), and the next load's "already running" stop then says
+// the truth -- reboot required, nothing was loaded -- instead of the old
+// "Nothing to do", which stood next to a loader holding a port no reload
+// could ever deliver into. A delivered autoload clears the marker.
+//
 // Launch consent: the builder awaits this file before booting the module
 // graph, so nothing runs -- not even the WebKit stage -- until it finishes.
 // That wait is used for one informed-choice screen: an overlay asks the user
@@ -76,6 +83,7 @@ link.href = 'https://github.com/Wamphyre/wamphyre-autoloader';
 var percent = 0;
 var finished = false;
 var sent = false;
+var elfFailed = false; // this run already failed to hand over the autoload
 function update(next, message, state) {
   percent = Math.max(percent, next);
   bar.style.width = percent + '%';
@@ -96,6 +104,7 @@ var MAX_RETRIES = 3;
 var BACKOFF_SECONDS = [5, 10, 20];
 var RETRY_KEY = 'wamp_rt_count';
 var KERNEL_STATE_KEY = 'wamp_kernel_state';
+var ELF_PARTIAL_KEY = 'wamp_elf_partial';
 var WATCHDOG_MS = 90000;  // pre-kernel log silence before an automatic reload
 var PRE_ERROR_MS = 20000; // a pre-kernel error with no follow-up before a reload
 
@@ -286,6 +295,27 @@ function clearRetries() {
   try { sessionStorage.removeItem(RETRY_KEY); } catch (error) {}
 }
 
+// Honesty markers for a run that failed after the kernel payload finished:
+// the loader is up, but the autoload did not reach it (or only part of it
+// did). A reload would then find the loader already accepting connections
+// and be told "nothing to do" -- a lie, because nothing is loaded and a
+// reload can never complete the chain. The in-memory flag covers this run;
+// the sessionStorage flag survives the automatic retry reload so the next
+// load keeps telling the truth. Rebooting clears sessionStorage, which is
+// the all-clear.
+function noteElfPartial() {
+  elfFailed = true;
+  try { sessionStorage.setItem(ELF_PARTIAL_KEY, '1'); } catch (error) {}
+}
+function elfPartialHeld() {
+  if (elfFailed) return true;
+  try { return sessionStorage.getItem(ELF_PARTIAL_KEY) === '1'; } catch (error) { return false; }
+}
+function forgetElfPartial() {
+  elfFailed = false;
+  try { sessionStorage.removeItem(ELF_PARTIAL_KEY); } catch (error) {}
+}
+
 function cancelReload() {
   if (reloadTimer !== null) {
     clearInterval(reloadTimer);
@@ -320,6 +350,7 @@ function markSuccess() {
   var pending = reloadTimer !== null;
   cancelReload();
   clearRetries();
+  forgetElfPartial(); // a delivered autoload supersedes any earlier partial hand-over
   // By the time the ELF transfer completes, the kernel exploit has already
   // finished and put its state back, so this is a clean outcome even if the
   // queue summary never arrives (page dies right after the send).
@@ -401,6 +432,18 @@ function finishPolicy(failedCount) {
 function stopPolicy(text) {
   terminal = true;
   if (/ELF loader is already accepting connections/.test(text)) {
+    // The stop text proves the loader is up right now. Without a partial
+    // hand-over in this browser session that really is nothing-to-do; with
+    // one, saying nothing-to-do would hide that the payloads never arrived.
+    if (elfPartialHeld()) {
+      cancelReload();
+      clearRetries();
+      noteKernelState('clean');
+      update(percent, 'Nothing was loaded: a previous attempt in this browser ' +
+        'session did not deliver the autoload to the ELF loader. Reboot the ' +
+        'console and launch the autoloader again.', 'error');
+      return;
+    }
     markSuccess();
     return;
   }
@@ -503,6 +546,14 @@ function readLine(line) {
     if (!cleanVerdict) checkCleanVerdict(text);
   }
   if (/Autoload: sent \d+ bytes/.test(text)) markSuccess();
+  if (!sent && phase === 'post' && /ELF transfer failed after \d+ bytes/.test(text)) {
+    // The loader was connected but the delivery died part-way (elfldr reads
+    // exact lengths and discards a short one, so it is running with nothing
+    // loaded). The automatic retry reload will stop on the already-running
+    // loader; remember the failure so that stop tells the truth instead of
+    // "nothing to do".
+    noteElfPartial();
+  }
   // The display is final once the queue reported its summary or stop; only
   // a late success may still matter (it cancels a pending retry), but late
   // errors must not rewrite the verdict the page already shows.

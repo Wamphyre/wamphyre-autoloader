@@ -2,6 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.6.8] - 2026-10-16
+
+### Stability & Reliability
+
+* **The SMP reload watchdog retries a failed re-send.** The app-close
+  watchdog used to fire the ShadowMountPlus re-send exactly once: a single
+  transient send failure (an elfldr still busy, a lost loopback packet)
+  silently left the session without a working SMP until the next app
+  closed — precisely the wedge the watchdog exists to prevent. It now
+  retries up to `SMP_RELOAD_ATTEMPTS` (3) attempts, `SMP_RELOAD_RETRY_MS`
+  (2 s) apart, each a fresh connection plus a complete re-send; the
+  notification spam stays at one toast, and the failure notification only
+  appears once every attempt has failed.
+* **Payload sends to elfldr are bounded by a send timeout (30 s).** elfldr
+  reads exact lengths derived from the ELF header (`MSG_WAITALL`), so a
+  sender that stalls blocked both sides forever: the chain hung in
+  `send()` with no verdict and no watchdog could help mid-chain. Every
+  send (chain payloads and watchdog re-sends alike) now times out after
+  30 s; the timed-out socket closes, elfldr discards the truncated stream
+  without executing it (verified: short `recv` returns are fatal in
+  `elfldr_read`, nothing loads), and a retry always starts from a fresh
+  connection.
+* **A failed autoload hand-over is no longer reported as success.** When
+  the autoload transfer died part-way ("ELF transfer failed after N
+  bytes") the scheduled retry reload stopped at the already-running
+  loader probe and was told "ELF loader already running. Nothing to do." —
+  a lie, since elfldr holds the port while nothing is loaded and no
+  reload can complete the chain. The page now remembers the failed
+  hand-over (`wamp_elf_partial` in sessionStorage): the next load's
+  already-running stop then demands a reboot instead of the untruth, and
+  never reloads again. A delivered "Autoload: sent" clears the marker and
+  keeps the classic nothing-to-do message for genuinely-idle sessions.
+  Retry behaviour itself is unchanged — the failing run still schedules
+  its normal clean retry; only the next load's verdict is honest now.
+
+### Tests
+
+* `test_retry_orchestrator.js`: three new scenario groups — the failed
+  hand-over marker is set on transfer failure, the next load's
+  already-running stop demands a reboot (no reload, latch stays clean, a
+  late success line cannot rewrite it), a delivered autoload clears the
+  marker back to the classic nothing-to-do, and pre-transfer failures
+  leave no marker at all.
+
 ## [v0.6.7] - 2026-10-15
 
 ### Default payload chain

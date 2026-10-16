@@ -10,7 +10,16 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <unistd.h>
+
+/* Send timeout for every transfer to elfldr, in seconds. Without it, a
+ * send() to a stalled elfldr blocks forever: elfldr reads exact lengths
+ * derived from the ELF header (MSG_WAITALL), so a sender that stops
+ * leaves both sides waiting. The timeout closes the socket, elfldr
+ * discards the truncated delivery, and a retry starts from a fresh
+ * connection — the watchdog's retries for ShadowMountPlus rely on that. */
+#define ELFLDR_SEND_TIMEOUT_SEC 30
 
 /* -----------------------------------------------------------------------
  * Internal: open a TCP connection to 127.0.0.1:ELFLDR_PORT
@@ -32,6 +41,13 @@ static int connect_to_elfldr(void) {
     if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         close(sock);
         return -1;
+    }
+
+    if (setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO,
+                   &(struct timeval){ .tv_sec = ELFLDR_SEND_TIMEOUT_SEC, .tv_usec = 0 },
+                   sizeof(struct timeval)) != 0) {
+        printf("[autoloader] launcher: could not set a send timeout (continuing without one)\n");
+        fflush(stdout);
     }
 
     return sock;

@@ -46,6 +46,7 @@ function makePage(options = {}) {
   let nextTimerId = 1;
   const store = {};
   if (options.kernelState) store['wamp_kernel_state'] = options.kernelState;
+  if (options.elfPartial) store['wamp_elf_partial'] = '1';
   // The consent default matches a browser session that already confirmed the
   // launch: every existing orchestrator test runs past the gate, and the
   // consent tests below opt out with { consent: false }.
@@ -166,6 +167,8 @@ function makePage(options = {}) {
     reloadCalls: () => sandbox.location.reloadCalls,
     retries: () => sandbox.sessionStorage.getItem('wamp_rt_count'),
     setRetries(n) { if (n === null) sandbox.sessionStorage.removeItem('wamp_rt_count'); else sandbox.sessionStorage.setItem('wamp_rt_count', String(n)); },
+    elfPartial: () => store['wamp_elf_partial'] || null,
+    setElfPartial(n) { if (n === null) delete store['wamp_elf_partial']; else store['wamp_elf_partial'] = String(n); },
     kernelState: () => store['wamp_kernel_state'] || null,
     bootRefused: () => bootRefused,
   };
@@ -649,5 +652,99 @@ function runSuccessFlow(page) {
     assert.equal(page.state(), 'done');
   }
 
-  console.log('Retry orchestrator checks passed: clean failures auto-retry within budget, dirty failures demand a reboot, the pre-kernel watchdog recovers a wedged page, the kernel phase is never interrupted, the kernel-state latch gates every reload, a kernel-phase failure needs an explicit clean verdict to be retryable, and the launch consent gate asks before anything runs.');
+  // 29. Honesty after a failed ELF hand-over: an autoload transfer that died
+  // after the loader was connected marks the session; a reload that finds
+  // the loader already accepting connections must not say "nothing to do"
+  // (nothing was loaded) -- it demands a reboot, keeps the latch clean and
+  // never reloads again.
+  {
+    // The failing run: a clean kernel verdict, then the transfer dies.
+    const prior = makePage();
+    prior.say('=== [2/3] relapse.js ===', 'success');
+    prior.say('Cleanup: verified the kernel state was restored', 'success');
+    prior.say('=== [3/3] autoload.js ===', 'success');
+    prior.say('ELF transfer failed after 4242 bytes.', 'error');
+    prior.say('=== queue finished: 2/3 completed, 1 failed ===', 'error');
+    assert.match(prior.label(), /automatic retry 1 of 3/,
+      'the failing run itself is still a clean, retryable failure');
+    assert.equal(prior.elfPartial(), '1',
+      'the failed hand-over must be remembered by the next load');
+
+    // The automatic retry reload: the loader is up, so elfldr-check stops
+    // the queue and the page must tell the truth instead of "nothing to do".
+    {
+      const page = makePage({ elfPartial: true, kernelState: 'clean' });
+      await page.startup;
+      page.say('=== [1/3] elfldr-check.js ===', 'success');
+      page.say('ELF loader is already running. Skipping the kernel exploit and autoload.', 'success');
+      page.say('=== queue stopped: ELF loader is already accepting connections on 127.0.0.1:9021; 2 payload(s) skipped ===', 'info');
+      assert.match(page.label(), /Nothing was loaded/);
+      assert.equal(page.state(), 'error');
+      assert.equal(page.kernelState(), 'clean',
+        'the loader being up proves nothing touched the kernel this run');
+      page.tick(120000);
+      assert.equal(page.reloadCalls(), 0, 'no retry can complete this run');
+      page.say('Autoload: sent 123456 bytes of autoload.elf to elfldr.', 'success');
+      assert.match(page.label(), /Nothing was loaded/,
+        'a late sent line must not rewrite the reboot demand');
+    }
+
+    // The same result through a plain relaunch of the app: the flag lives in
+    // sessionStorage, so the honest message is not restricted to retries.
+    {
+      const page = makePage({ elfPartial: true, kernelState: 'clean' });
+      await page.startup;
+      page.say('=== [1/3] elfldr-check.js ===', 'success');
+      page.say('ELF loader is already running. Skipping the kernel exploit and autoload.', 'success');
+      page.say('=== queue stopped: ELF loader is already accepting connections on 127.0.0.1:9021; 2 payload(s) skipped ===', 'info');
+      assert.match(page.label(), /Nothing was loaded/);
+    }
+  }
+
+  // 30. A delivered autoload clears the honesty flag: a later already-running
+  // stop (same session, payloads running since) is a real nothing-to-do.
+  {
+    const page = makePage({ elfPartial: true, kernelState: 'clean' });
+    await page.startup;
+    page.say('=== [1/3] elfldr-check.js ===', 'success');
+    page.say('No ELF loader is accepting connections on port 9021. Continuing.', 'info');
+    page.say('=== [2/3] poops.js ===', 'success');
+    page.say('=== [3/3] autoload.js ===', 'success');
+    page.say('Autoload: sent 123456 bytes of autoload.elf to elfldr.', 'success');
+    // A success over the classic display only flips to 'done' at the summary;
+    // with a pending reload there is no pending reload here, so it stays
+    // 'running' until then.
+    assert.equal(page.state(), 'running');
+    page.say('=== queue finished: 3/3 completed, 0 failed ===', 'success');
+    assert.equal(page.state(), 'done');
+    assert.equal(page.elfPartial(), null,
+      'the delivered autoload cleared the honesty marker');
+  }
+
+  // 31. A run that never sent anything leaves the flag alone: an already-
+  // running stop after an unrelated failure (e.g. a pre-transfer fetch
+  // error) is still an ordinary, truthful nothing-to-do.
+  {
+    const prior = makePage();
+    prior.say('=== [2/3] relapse.js ===', 'success');
+    prior.say('Cleanup: verified the kernel state was restored', 'success');
+    prior.say('=== [3/3] autoload.js ===', 'success');
+    prior.say('The exploit did not complete; no ELF was sent.', 'error');
+    prior.say('=== queue finished: 2/3 completed, 1 failed ===', 'error');
+    assert.match(prior.label(), /automatic retry 1 of 3/,
+      'no transfer attempt means no honesty marker is needed');
+    assert.equal(prior.elfPartial(), null,
+      'a failure before any connection starts must not set the marker');
+
+    const page = makePage({ kernelState: 'clean' });
+    await page.startup;
+    page.say('=== [1/3] elfldr-check.js ===', 'success');
+    page.say('ELF loader is already running. Skipping the kernel exploit and autoload.', 'success');
+    page.say('=== queue stopped: ELF loader is already accepting connections on 127.0.0.1:9021; 2 payload(s) skipped ===', 'info');
+    assert.match(page.label(), /ELF loader already running/,
+      'without a partial hand-over the message stays the classic one');
+    assert.equal(page.state(), 'done');
+  }
+
+  console.log('Retry orchestrator checks passed: clean failures auto-retry within budget, dirty failures demand a reboot, the pre-kernel watchdog recovers a wedged page, the kernel phase is never interrupted, the kernel-state latch gates every reload, a kernel-phase failure needs an explicit clean verdict to be retryable, the launch consent gate asks before anything runs, and an already-running loader after a failed hand-over tells the truth.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
