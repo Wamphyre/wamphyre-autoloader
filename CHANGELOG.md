@@ -37,6 +37,17 @@ All notable changes to this project will be documented in this file.
   Retry behaviour itself is unchanged — the failing run still schedules
   its normal clean retry; only the next load's verdict is honest now.
 
+### Build system
+
+* **The PS5 SDK ships in-repo (`tools/install_sdk.sh`).** The binary SDK
+  distribution (v0.44, sha256-pinned, wrappers driving any host LLVM 15–23)
+  is downloaded once into `tools/ps5-payload-sdk` (content-ignored) and
+  completed with libmicrohttpd 1.0.1 by `tools/build_sdk_deps.sh`, so the
+  full build never needs Docker on a machine that ran those two scripts:
+  `build_release.sh` prefers the vendored SDK and keeps the Docker image as
+  fallback. `installer.elf` and `autoload.elf` link exactly as before; only
+  the toolchain provisioning stopped being container-only.
+
 ### Tests
 
 * `test_retry_orchestrator.js`: three new scenario groups — the failed

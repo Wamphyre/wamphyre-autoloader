@@ -251,7 +251,14 @@ vendored trees are plain directories (this fork does not use git submodules):
 remote-loader's nested copy of this repository is not a build input.
 
 `build_release.sh` pins `BUILD_VERSION` once across Docker, HTML/cache generation,
-and PC host packaging. The installer keeps its plain name, `installer.elf` — the
+and PC host packaging. It prefers the vendored, sha256-pinned SDK at
+`tools/ps5-payload-sdk` — installed once by `tools/install_sdk.sh` (binary SDK
+distribution whose wrappers drive any host LLVM 15–23) and completed by
+`tools/build_sdk_deps.sh` (libmicrohttpd 1.0.1) — which makes full builds run
+on the workstation without Docker; the Docker API image
+(`third_party/ps5-webkit-remote-loader/Dockerfile.sdk`) remains the fallback
+for machines that never installed the vendored copy. The installer keeps its
+plain name, `installer.elf` — the
 version lives inside the binary (`WAMP_FULL_VERSION`) and in the
 `/app/<version>/` cache layout it installs — while the PC host is written
 versioned and the host pages embed the installer under a versioned virtual

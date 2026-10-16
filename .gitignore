@@ -32,6 +32,12 @@ third_party/ps5-unified-autoloader/payloads/
 third_party/ps5-unified-autoloader/*_elf.c
 third_party/ps5-unified-autoloader/etahen_config.c
 
+# The vendored PS5 payload SDK: binary distribution wrapped around the host
+# LLVM, brought in by tools/install_sdk.sh (pinned v0.44, sha256-verified)
+# and completed by tools/build_sdk_deps.sh. Content is never committed; the
+# scripts that fetch and complete it are.
+tools/ps5-payload-sdk/
+
 # OS / Python / logs / local references
 .DS_Store
 Thumbs.db
