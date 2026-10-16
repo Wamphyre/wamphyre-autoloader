@@ -254,10 +254,11 @@ remote-loader's nested copy of this repository is not a build input.
 and PC host packaging. It prefers the vendored, sha256-pinned SDK at
 `tools/ps5-payload-sdk` — installed once by `tools/install_sdk.sh` (binary SDK
 distribution whose wrappers drive any host LLVM 15–23) and completed by
-`tools/build_sdk_deps.sh` (libmicrohttpd 1.0.1) — which makes full builds run
-on the workstation without Docker; the Docker API image
-(`third_party/ps5-webkit-remote-loader/Dockerfile.sdk`) remains the fallback
-for machines that never installed the vendored copy. The installer keeps its
+`tools/build_sdk_deps.sh` (libmicrohttpd 1.0.1) — then the manual install at
+the Makefile-default `/opt/ps5-payload-sdk` (README, "Build from source"),
+which makes full builds run on the workstation without Docker; the Docker
+API image (`third_party/ps5-webkit-remote-loader/Dockerfile.sdk`) remains
+the last-resort fallback. The installer keeps its
 plain name, `installer.elf` — the
 version lives inside the binary (`WAMP_FULL_VERSION`) and in the
 `/app/<version>/` cache layout it installs — while the PC host is written

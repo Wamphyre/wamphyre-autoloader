@@ -44,7 +44,8 @@ All notable changes to this project will be documented in this file.
   is downloaded once into `tools/ps5-payload-sdk` (content-ignored) and
   completed with libmicrohttpd 1.0.1 by `tools/build_sdk_deps.sh`, so the
   full build never needs Docker on a machine that ran those two scripts:
-  `build_release.sh` prefers the vendored SDK and keeps the Docker image as
+  `build_release.sh` prefers the vendored SDK, honours the manual
+  `/opt/ps5-payload-sdk` install next, and keeps the Docker image as
   fallback. `installer.elf` and `autoload.elf` link exactly as before; only
   the toolchain provisioning stopped being container-only.
 

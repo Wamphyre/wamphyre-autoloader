@@ -31,10 +31,19 @@ rm -f wamphyre-autoloader-installer_v*.elf wamphyre-autoloader-host_v*.py
 # The host build embeds it under a versioned virtual name automatically
 # (HOST_PAYLOAD_VIRTUAL in the Makefile).
 
-LOCAL_SDK="$(pwd)/tools/ps5-payload-sdk"
+# SDK resolution order (see README "Build from source"): the vendored copy
+# under tools/, then the manual install at the Makefile-default /opt path,
+# then the Docker image as the last resort.
+LOCAL_SDK=""
 LOCAL_SDK_ARG=""
-if [ -x "$LOCAL_SDK/bin/prospero-clang" ]; then
-    echo "Building with the vendored SDK at $LOCAL_SDK (no Docker)."
+for candidate in "$(pwd)/tools/ps5-payload-sdk" "/opt/ps5-payload-sdk"; do
+    if [ -x "$candidate/bin/prospero-clang" ]; then
+        LOCAL_SDK="$candidate"
+        break
+    fi
+done
+if [ -n "$LOCAL_SDK" ]; then
+    echo "Building with the local SDK at $LOCAL_SDK (no Docker)."
     export WAMP_SDK="$LOCAL_SDK"
     LOCAL_SDK_ARG="SDK=$LOCAL_SDK"
     make clean all $LOCAL_SDK_ARG
@@ -46,9 +55,11 @@ elif command -v docker >/dev/null 2>&1; then
         -e BUILD_VERSION -e BUILD_TYPE -e CUSTOM_VERSION -e WAMP_SDK=/opt/ps5-payload-sdk \
         -v "$(pwd)":/src -w /src "$IMAGE_NAME" make clean all
 else
-    echo "Error: no vendored SDK at $LOCAL_SDK and Docker is unavailable." >&2
-    echo "Run tools/install_sdk.sh once (SDK lands in tools/ps5-payload-sdk)," >&2
-    echo "then tools/build_sdk_deps.sh (libmicrohttpd), and retry." >&2
+    echo "Error: no local SDK (tools/ps5-payload-sdk or /opt/ps5-payload-sdk)" >&2
+    echo "and Docker is unavailable. Either run tools/install_sdk.sh once" >&2
+    echo "(SDK lands in tools/, then tools/build_sdk_deps.sh for" >&2
+    echo "libmicrohttpd), or install the SDK at /opt/ps5-payload-sdk yourself" >&2
+    echo "(see README, Build from source)." >&2
     exit 1
 fi
 

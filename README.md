@@ -143,10 +143,16 @@ Test your own WebKit payloads with [ps5-webkit-remote-loader](https://github.com
 
 ### Build from source (no Docker)
 
-The release pipeline (`./build_release.sh`) builds in the `wamphyre-autoloader-sdk` Docker image, but everything also builds against a local [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk) (v0.44). The SDK wraps your system LLVM, so the host needs `llvm-config`, `clang` and `lld` (Debian: `apt install llvm-19 clang-19 lld-19`).
+Everything builds against the local [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk) (v0.44). The SDK wraps your system LLVM, so the host needs `llvm-config`, `clang` and `lld` (Debian: `apt install llvm-19 clang-19 lld-19`).
 
 ```sh
-# 1. SDK at /opt/ps5-payload-sdk (the Makefile default; override with SDK=)
+# Vendored SDK flow (recommended; SDK lives in the checkout, content-ignored):
+./tools/install_sdk.sh      # pinned v0.44, sha256-verified → tools/ps5-payload-sdk
+./tools/build_sdk_deps.sh   # libmicrohttpd 1.0.1 into the vendored sysroot
+BUILD_TYPE=stable ./build_release.sh   # picks tools/ → /opt → Docker
+
+# Manual flow (same SDK version, at the Makefile-default path):
+# 1. SDK at /opt/ps5-payload-sdk
 sudo unzip ps5-payload-sdk.zip -d /opt && sudo mv /opt/ps5-payload-sdk* /opt/ps5-payload-sdk
 
 # 2. libmicrohttpd 1.0.1 for the PS5 target (same steps as the loader's build_deps.sh)
