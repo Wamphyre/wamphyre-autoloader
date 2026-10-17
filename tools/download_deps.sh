@@ -17,7 +17,9 @@ PLDMGR_REPO="itsPLK/ps5-payload-manager"
 PLDMGR_TAG="v0.6.1"
 PLDMGR_DEST="$ROOT/build/deps/pldmgr.elf"
 
-# Default-chain payloads (no autoload.txt): always the latest official release
+# Default-chain payloads (no autoload.txt): always the latest official release.
+# kstuff-lite's release asset is named kstuff.elf — this is not the separate
+# full kstuff project of the etaHEN lineage.
 KSTUFF_REPO="EchoStretch/kstuff-lite"
 KSTUFF_DEST="$ROOT/build/deps/kstuff.elf"
 SMP_REPO="drakmor/ShadowMountPlus"

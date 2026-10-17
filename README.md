@@ -45,10 +45,13 @@ When a config is found, it replaces the default chain completely, and Payload Ma
 <Details>
 <Summary><i>ShadowMountPlus recommends against etaHEN — why does the chain include it?</i></Summary>
 
-* **The upstream note is about kstuff, not about etaHEN itself.** SMP 1.7
-  dropped its legacy kstuff auto-pause and delay autotuning, and its author
-  warns that etaHEN — which bundles its own kstuff and its own pause/unpause
-  handling — collides with the modern kstuff lifecycle SMP expects.
+* **The upstream note is about etaHEN's own kstuff, not about etaHEN itself
+  — and not about the chain's kstuff-lite.** Two different projects share the
+  "kstuff" name: the chain ships kstuff-lite, while etaHEN embeds the full
+  kstuff project (`etaHEN/kstuff`, a fork of `EchoStretch/kstuff`) with its
+  own pause/unpause handling. SMP 1.7 dropped its legacy kstuff auto-pause
+  and delay autotuning, and its author warns that etaHEN's bundled kstuff
+  collides with the modern kstuff lifecycle SMP expects.
 * **The config template removes exactly that conflict.** etaHEN is
   installed with `[kstuff] autoload=false`, so its embedded kstuff never
   loads: the only kstuff running is the kstuff-lite the chain sent first.

@@ -231,6 +231,10 @@ or changing the exploit sources.
 release assets plus the **latest** kstuff-lite and ShadowMountPlus releases,
 caching verified digest sidecars in `build/deps/` for offline rebuilds, then
 stages the default chain under `third_party/ps5-unified-autoloader/payloads/`.
+`build/deps/kstuff.elf` is a naming artefact: the file **is** kstuff-lite,
+whose own release asset is literally named `kstuff.elf`. It is never the
+separate full kstuff project of the etaHEN lineage (`etaHEN/kstuff`, forked
+from `EchoStretch/kstuff`) — the chain ships kstuff-lite and only kstuff-lite.
 The unified autoloader ELF is **built locally** (`make autoload-elf`) from the
 vendored sources — it is no longer downloaded from an upstream release — so it
 can embed the default chain: latest kstuff-lite and ShadowMountPlus, the
