@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.6.9] - 2026-10-20
+
+### Default payload chain
+
+* **Payload Manager updated to v0.6.3** (pinned release asset; was v0.6.1).
+  Upstream v0.6.2 added an optional **Return After Autoload** setting,
+  disabled by default, to go back to the dashboard about 3 s after all
+  payloads load successfully (results stay visible if anything fails or is
+  skipped), an option to hide payload icons on the dashboard for more text
+  space, a collapsible release-details section on the payload pages and two
+  new languages (Traditional Chinese, Romanian); it also made the ELF
+  smaller by replacing the bundled emoji artwork with Twemoji images from a
+  version-pinned CDN that are cached for offline reuse, and fixed the
+  mobile upload controls. v0.6.3 is the hotfix for emojis that did not show
+  up on the PS5. The vendored source tree under
+  `third_party/ps5-unified-autoloader/third_party/ps5-payload-manager` is
+  updated to the same tag. (pldmgr self-updates on the console from its own
+  repository anyway — the pin only sets which version a fresh install
+  starts from.)
+
 ## [v0.6.8] - 2026-10-16
 
 ### Stability & Reliability

@@ -159,6 +159,7 @@ app.get('/autoload_status', (req, res) => {
 
 app.get('/get_config', (req, res) => {
   res.json({
+    AUTOLOAD_RETURN_TO_DASHBOARD: false,
     AUTOLOAD_ENABLED: true,
     AUTOLOAD_LIST: "goldhen_v2.4b17.elf,etaHEN_1.8.elf",
     LAST_REPOSITORY_UPDATE: lastRepositoryUpdate,

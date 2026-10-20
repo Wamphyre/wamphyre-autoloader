@@ -1,3 +1,27 @@
+## v0.6.3
+
+### 🛠️ Bug Fixes
+* Hotfix for v0.6.2: fixed emojis not appearing on PS5.
+
+**Full Changelog**: [v0.6.2...v0.6.3](https://github.com/itsPLK/ps5-payload-manager/compare/v0.6.2...v0.6.3)
+
+## v0.6.2
+
+### 🚀 Features & UX Improvements
+* **Autoload Return to Dashboard**: Added an optional **Return After Autoload** setting, disabled by default, to return to the dashboard about 3 seconds after all payloads load successfully. Results stay visible if any payload fails or is skipped ([#123](https://github.com/itsPLK/ps5-payload-manager/issues/123)).
+* **Dashboard Icon Setting**: Added an option to hide payload icons on the dashboard, leaving more space for text while keeping card sizes unchanged. Icons remain visible in **Get Payloads** ([#131](https://github.com/itsPLK/ps5-payload-manager/issues/131)).
+* **Release Details**: Added a collapsible **Release details** section above the README on payload details pages. Release notes are fetched directly from GitHub for the release tag or version offered by the payload catalog ([#133](https://github.com/itsPLK/ps5-payload-manager/issues/133)).
+* **New Languages**:
+  * **Traditional Chinese**
+  * **Romanian**
+
+### 🛠️ Performance & Bug Fixes
+* **Smaller ELF**: Replaced bundled emoji artwork with Twemoji images loaded from a version-pinned public CDN, reducing the payload size. Downloaded emoji are cached for offline reuse ([#130](https://github.com/itsPLK/ps5-payload-manager/issues/130)).
+* **Mobile Upload Controls**: Fixed the upload button appearing outside the visible area in portrait mode. Repository controls now wrap to fit narrow screens, including when search is open ([#126](https://github.com/itsPLK/ps5-payload-manager/issues/126)).
+* **Payload Icon Caching**: Payload icons and catalog metadata now persist across browser sessions, so cached icons appear immediately when reopening the app instead of waiting for a catalog refresh.
+
+**Full Changelog**: [v0.6.1...v0.6.2](https://github.com/itsPLK/ps5-payload-manager/compare/v0.6.1...v0.6.2)
+
 ## v0.6.1
 
 ### 🛠️ Backend & Bug Fixes

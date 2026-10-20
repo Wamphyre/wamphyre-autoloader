@@ -14,7 +14,7 @@ ELFLDR_DEST="$ROOT/build/deps/elfldr.elf"
 # Payload Manager, embedded by the unified autoloader as the chain's manager UI
 PLDMGR_SUBMODULE="$ROOT/third_party/ps5-unified-autoloader/third_party/ps5-payload-manager"
 PLDMGR_REPO="itsPLK/ps5-payload-manager"
-PLDMGR_TAG="v0.6.1"
+PLDMGR_TAG="v0.6.3"
 PLDMGR_DEST="$ROOT/build/deps/pldmgr.elf"
 
 # Default-chain payloads (no autoload.txt): always the latest official release.

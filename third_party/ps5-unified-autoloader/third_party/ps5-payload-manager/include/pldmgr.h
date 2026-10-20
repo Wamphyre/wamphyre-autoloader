@@ -39,7 +39,7 @@
 #define ROUTE_PROCESS_KILL "/process_kill"
 #define ROUTE_HISTORY_LIST "/history_list"
 
-#define MENU_VERSION "0.6.1"
+#define MENU_VERSION "0.6.3"
 #define AUTOLOAD_CONFIG_PATH "/data/pldmgr/autoload.txt"
 #define FAVORITES_CONFIG_PATH "/data/pldmgr/favorites.txt"
 #define PLDMGR_CONFIG_PATH "/data/pldmgr/pldmgr_config.txt"
