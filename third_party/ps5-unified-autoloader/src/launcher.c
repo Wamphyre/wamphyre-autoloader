@@ -18,7 +18,7 @@
  * derived from the ELF header (MSG_WAITALL), so a sender that stops
  * leaves both sides waiting. The timeout closes the socket, elfldr
  * discards the truncated delivery, and a retry starts from a fresh
- * connection — the watchdog's retries for ShadowMountPlus rely on that. */
+ * connection. */
 #define ELFLDR_SEND_TIMEOUT_SEC 30
 
 /* -----------------------------------------------------------------------

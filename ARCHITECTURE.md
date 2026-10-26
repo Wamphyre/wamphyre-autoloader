@@ -243,10 +243,10 @@ Manager as the manager UI. Native stability hardening in the fork's copy:
 every payload send to elfldr carries a 30 s `SO_SNDTIMEO` (elfldr's
 exact-length `MSG_WAITALL` reads would otherwise let a stalled delivery block
 the chain forever, and the closing of a timed-out socket is what makes elfldr
-discard the truncated stream), and the app-close watchdog re-sends the
-ShadowMountPlus ELF up to 3 times, 2 s apart, before reporting failure — a
-single transient send failure must not leave the session without a working
-SMP until the next app close. The Byepervisor hypervisor unlock is vendored
+discard the truncated stream). The default chain no longer keeps the
+autoloader resident afterwards: the app-close ShadowMountPlus reload watchdog
+(retired in v0.7.0) existed for upstream issue #153, whose stale per-title
+state upstream fixed in 1.7beta7. The Byepervisor hypervisor unlock is vendored
 as source at `third_party/byepervisor-reborn/` but is **not part of the
 chain**: arming it was found to freeze/power off consoles on 13.60 (see
 its `WAMPHYRE_VENDOR_NOTE.md`), so the source is kept inert until an

@@ -12,7 +12,7 @@
 **Nothing to configure by default.** With no `autoload.txt` anywhere, the autoloader boots a built-in chain, each step spaced 5 seconds apart:
 
 1. **kstuff-lite** — always the latest release from [EchoStretch/kstuff-lite](https://github.com/EchoStretch/kstuff-lite), built in at build time
-2. **ShadowMountPlus** — always the latest release from [drakmor/ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus), built in at build time — and **re-sent automatically every time you close a game**, so a stuck mount state can never wedge it: a fresh instance replaces the old one cleanly and rescans
+2. **ShadowMountPlus** — always the latest release from [drakmor/ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus), built in at build time
 3. **etaHEN** — vendored in this repository, with its config template installed on first run (built-in **FTP on port 1337** and the app jailbreak homebrew apps need)
 4. **[Payload Manager](https://github.com/itsPLK/ps5-payload-manager)** — as the manager UI for everything else
 

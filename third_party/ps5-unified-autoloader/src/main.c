@@ -9,9 +9,7 @@
  *   5. Scan USB0-7, then /data for autoload.txt
  *   6a. If found: iterate lines, launch each .elf from the config directory
  *   6b. If not found: run the default chain (kstuff-lite, ShadowMountPlus,
- *       etaHEN with its config ensured) and then Payload Manager, and
- *       stay alive as the SMP reload watchdog (re-sends ShadowMountPlus
- *       after every game close — see default_chain.c)
+ *       etaHEN with its config ensured) and then Payload Manager
  */
 
 #include "autoloader.h"
@@ -233,17 +231,11 @@ int main(void) {
     } else {
         /* Step 6b: no config — run the default chain, which ends with
          * Payload Manager as the manager UI. Chain errors are reported
-         * but do not stop the watchdog: a re-send also repairs an SMP
-         * launch that failed during the chain itself. */
+         * but do not abort the session. */
         if (run_default_chain() != 0) {
             printf("[autoloader] default chain reported errors\n");
             fflush(stdout);
         }
-
-        /* Keep the default chain healthy for the rest of the session:
-         * reload ShadowMountPlus after every game/app close so its
-         * per-title state never goes stale. Never returns. */
-        run_smp_reload_watchdog();
     }
 
     return 0;

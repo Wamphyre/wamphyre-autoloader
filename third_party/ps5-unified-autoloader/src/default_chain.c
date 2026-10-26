@@ -4,9 +4,7 @@
  * Runs when no autoload.txt exists: ensure etaHEN has a config (built-in
  * FTP on port 1337, FPS meter off — an existing config is never touched),
  * launch kstuff-lite, ShadowMountPlus and etaHEN with a fixed delay
- * between them, then start Payload Manager as the manager UI. Afterwards
- * run_smp_reload_watchdog() keeps the autoloader alive to re-send
- * ShadowMountPlus after every game close.
+ * between them, then start Payload Manager as the manager UI.
  */
 
 #include "default_chain.h"
@@ -113,91 +111,4 @@ int run_default_chain(void) {
 
     autoloader_notify("Default chain complete (%d error(s))", errors);
     return errors ? -1 : 0;
-}
-
-/* -----------------------------------------------------------------------
- * run_smp_reload_watchdog
- *
- * ShadowMountPlus tracks mounted/prepared titles and kstuff's auto-pause
- * with per-title runtime state that can go stale after a game closes
- * (upstream issue #153, still open in 1.7-beta5fix1): once that happens,
- * every later scan stays queued and no new title mounts until the SMP
- * payload is re-sent. Re-sending is the documented workaround, and it is
- * safe by design: a fresh SMP instance finds the running one, SIGTERMs
- * it, waits for it to exit — its shutdown path restores kstuff and
- * releases its mounts — and then takes over with clean state and a fresh
- * scan. This watchdog automates it: poll the running big app and, each
- * time one closes, re-send the embedded SMP ELF.
- *
- * It never returns; the autoloader process stays alive as a small
- * daemon for the rest of the session. The poll is a cheap LncUtil query,
- * and the chain was already complete before this runs, so nothing in it
- * ever waits on the watchdog.
- * ----------------------------------------------------------------------- */
-
-/* LncUtil lives in libSceSystemService (already linked); the same extern
- * app_killer.c uses for the disc-player teardown. */
-extern int sceLncUtilGetAppIdOfRunningBigApp(void);
-
-void run_smp_reload_watchdog(void) {
-    printf("[autoloader] SMP reload watchdog active\n");
-    fflush(stdout);
-
-    /* Nothing is running right after the chain: no reload until the user
-     * actually launches and closes something. */
-    uint32_t prev = (uint32_t)sceLncUtilGetAppIdOfRunningBigApp();
-
-    for (;;) {
-        usleep(SMP_RELOAD_POLL_MS * 1000);
-
-        uint32_t cur = (uint32_t)sceLncUtilGetAppIdOfRunningBigApp();
-        if (prev != 0xffffffffu && cur == 0xffffffffu) {
-            printf("[autoloader] app 0x%08x closed; reloading ShadowMountPlus\n", prev);
-            fflush(stdout);
-
-            /* Give SMP time to run its own stop handling first: the
-             * kstuff restore and mount cleanup of the closing title are
-             * exactly what a clean shutdown wants to finish. */
-            usleep(SMP_RELOAD_DELAY_MS * 1000);
-
-            autoloader_notify("Reloading: ShadowMountPlus");
-            /* Bounded retries: a single transient send failure (a briefly
-             * wedged elfldr, a lost loopback packet) used to leave the
-             * session without a working SMP until the next app closed,
-             * which is exactly the wedge this watchdog exists to prevent.
-             * Each attempt is a fresh connection plus a complete re-send;
-             * a truncated attempt is always discarded by elfldr's
-             * exact-size reads and never executes. If elfldr itself is
-             * gone, the retries fail fast on the refused connect. */
-            int reloaded = 0;
-            for (int attempt = 1; attempt <= SMP_RELOAD_ATTEMPTS; attempt++) {
-                if (attempt > 1) {
-                    printf("[autoloader] smp reload: retrying (attempt %d of %d)\n",
-                           attempt, SMP_RELOAD_ATTEMPTS);
-                    fflush(stdout);
-                    usleep(SMP_RELOAD_RETRY_MS * 1000);
-                }
-                if (launch_elf_from_memory(smp_elf, smp_elf_len) == 0) {
-                    reloaded = 1;
-                    break;
-                }
-            }
-
-            if (reloaded) {
-                printf("[autoloader] smp reloaded\n");
-            } else {
-                autoloader_notify("Failed to reload ShadowMountPlus");
-                printf("[autoloader] smp reload failed (%d attempt(s))\n",
-                       SMP_RELOAD_ATTEMPTS);
-            }
-            fflush(stdout);
-
-            /* Let the fresh instance finish its startup scan and hook
-             * install before watching for the next close; a game that
-             * already started meanwhile is tracked by the new instance. */
-            usleep(SMP_RELOAD_SETTLE_MS * 1000);
-            cur = (uint32_t)sceLncUtilGetAppIdOfRunningBigApp();
-        }
-        prev = cur;
-    }
 }

@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.7.0] - 2026-10-26
+
+### Default payload chain
+
+* **ShadowMountPlus updated to 1.7beta7** (latest official release at build
+  time, was 1.7-beta5fix1). Since the previous pin upstream fixed sandbox
+  cleanup and mount ownership across process handoffs and relaunches,
+  ShellCore hook reliability and startup handling while waiting for
+  kstuff, duplicate-image remount loops across scan roots, HTTP service
+  recovery after rest mode and socket loss, and sandbox USB recovery
+  after device removal (beta7). 1.7beta8 (redesigned TV web UI with
+  gamepad navigation, PKG installation from storage and PC-browser
+  streaming, patch/DLC management, PS4 images and folders, LAN API access
+  by default) is published as a prerelease, so the always-latest-official
+  policy deliberately does not pick it up yet.
+* **The SMP reload watchdog is removed.** v0.6.7 added a resident
+  watchdog that re-sent ShadowMountPlus after every game close, because
+  upstream 1.7-beta5fix1 could leave a stale prepared/mounted per-title
+  state behind and wedge every later scan (upstream issue #153). Upstream
+  1.7beta7 fixed the stale-state handling — the issue's original reporter
+  confirmed the repro is gone, and the beta6 notes list the sandbox
+  cleanup and mount-ownership fixes. With the chain now carrying
+  1.7beta8, the workaround is dead weight: the autoloader no longer
+  stays alive after the default chain. It launches the chain plus
+  Payload Manager and exits; the payloads keep running on their own.
+  (The upstream issue is still open pending broader testing; custom
+  `autoload.txt` chains were never affected either way.)
+
 ## [v0.6.9] - 2026-10-20
 
 ### Default payload chain
