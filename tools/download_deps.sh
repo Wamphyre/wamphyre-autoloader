@@ -184,23 +184,28 @@ def fetch(url, attempts=5):
     raise last
 
 
-sha256 = None
+cached_tag = ""
+cached_sha256 = None
 if os.path.isfile(dest) and os.path.isfile(sidecar):
     with open(sidecar) as f:
         try:
-            tag, sha256 = f.read().split()
+            cached_tag, cached_sha256 = f.read().split()
         except ValueError:
-            tag, sha256 = "", None
-    if sha256:
+            cached_tag, cached_sha256 = "", None
+    if cached_sha256:
         actual = hashlib.sha256(open(dest, "rb").read()).hexdigest()
-        if actual == sha256:
-            print(f"{os.path.basename(dest)} already present and verified ({tag}).")
-            sys.exit(0)
+        if actual == cached_sha256:
+            # Do not return yet: this function exists to ask GitHub for the
+            # latest release. The hash only proves the cached copy is intact,
+            # not that it is still the newest release.
+            print(f"{os.path.basename(dest)} cached ({cached_tag}); checking for a newer release...")
+        else:
+            print(f"{os.path.basename(dest)} cached copy is corrupt - re-checking...")
 
 try:
     release = json.loads(fetch(f"https://api.github.com/repos/{repo}/releases/latest"))
 except Exception as exc:
-    if sha256:
+    if cached_sha256:
         print(f"Warning: could not ask GitHub for the latest {repo} release "
               f"({exc}); keeping the cached copy.")
         sys.exit(0)
@@ -219,6 +224,14 @@ if asset is None:
 
 digest = asset.get("digest", "")
 digest = digest.split(":", 1)[-1] if ":" in digest else digest
+
+# The cached copy is the latest release and still intact: keep it.
+if (cached_sha256 and digest and tag == cached_tag
+        and os.path.isfile(dest)
+        and hashlib.sha256(open(dest, "rb").read()).hexdigest() == digest):
+    print(f"{os.path.basename(dest)} already present and verified ({tag}).")
+    sys.exit(0)
+
 url = asset["browser_download_url"]
 print(f"Downloading the latest {repo} release ({tag}): {url} ...")
 os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -226,7 +239,7 @@ tmp = dest + ".tmp"
 try:
     data = fetch(url)
 except Exception as exc:
-    if sha256:
+    if cached_sha256:
         print(f"Warning: download failed ({exc}); keeping the cached copy.")
         sys.exit(0)
     print(f"Error: download failed ({exc}).", file=sys.stderr)

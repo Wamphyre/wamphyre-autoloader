@@ -2,7 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
-## [v0.7.0] - 2026-10-26
+## [v0.7.1] - 2026-10-31
+
+### New features
+
+* Bumped version to 0.7.1 and completed full build: installer.elf, wamphyre-autoloader-host.py, and build/autoloader/*.html generated.
+* All dependencies (kstuff-lite v1.11, ShadowMountPlus 1.7beta11, Payload Manager v0.6.3, etaHEN) verified as latest official releases.
 
 ### Default payload chain
 
