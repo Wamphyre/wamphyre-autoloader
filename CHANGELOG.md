@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.7.2] - 2026-11-04
+
+### Default payload chain
+
+* **ShadowMountPlus updated to 1.7beta11** (latest official release at
+  build time; the previous shipped build carried 1.7beta7). The jump
+  includes the redesigned web interface for TV screens and gamepad
+  navigation (beta8), SMB2/SMB3 transfers and installation with a
+  guest/authenticated switch and a read-only mode (beta9), safe USB
+  ejection from the web interface and library operations on other games
+  during gameplay while protecting the active game (beta10), and the
+  unified PKG installation queue with cover cards for PC, local storage
+  and SMB — up to 32 PC files per batch, automatic game → update → DLC
+  ordering, queues that survive failures/cancellations, estimated
+  remaining time, improved PS4 DLC and PS5 media PKG detection (fixing
+  the premature DLC failures 0x80E90004), and json-c leak / I/O error
+  fixes (beta11). Removed forced FPKG closure when entering Rest Mode.
+* kstuff-lite v1.11, Payload Manager v0.6.3 and the vendored etaHEN
+  remain the latest official releases.
+
 ## [v0.7.1] - 2026-10-31
 
 ### New features
