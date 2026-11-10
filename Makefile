@@ -111,9 +111,14 @@ page: autoload-elf
 	    echo "$(BUILDER) payloads/$$chain.js -> build/autoloader/$$chain.html"; \
 	    $(BUILDER) $(CURDIR)/payloads/elfldr-check.js::$$chain payloads/$$chain.js $(CURDIR)/payloads/autoload.js::$(AUTOLOAD_PAYLOAD_VIRTUAL) \
 	        --title "$(BUILD_TITLE)" $(PAGE_FLAGS) \
-	        --embed $(AUTOLOAD_PAYLOAD_VIRTUAL)=build/deps/autoload.elf \
 	        -o $(CURDIR)/build/autoloader/$$chain.html || exit 1; \
 	done
+# The autoload ELF ships as a cache sibling of the pages, not as base64 inside
+# them: the page stays ~1.3 MB, the WebProcess holds bytes instead of text
+# during the exploit, and one ELF serves both chains. The page prefetches it
+# from its startup script before anything touches the kernel (see
+# frontend/autoloader/app.js). This copy also keeps `make dev` working.
+	cp build/deps/autoload.elf build/autoloader/$(AUTOLOAD_PAYLOAD_VIRTUAL)
 
 registry: version page $(INSTALLER_LOGO)
 	rm -rf $(STAGE)
@@ -123,6 +128,7 @@ registry: version page $(INSTALLER_LOGO)
 	@for chain in $(CHAINS); do \
 	    cp build/autoloader/$$chain.html $(STAGE)/app/$(BUILD_VERSION)/$$chain.html || exit 1; \
 	done
+	cp build/deps/autoload.elf $(STAGE)/app/$(BUILD_VERSION)/$(AUTOLOAD_PAYLOAD_VIRTUAL)
 	@echo "$(BUILD_VERSION)" > $(STAGE)/VERSION
 	$(PYTHON) tools/gen_file_registry.py $(STAGE) $(word 1,$(REGISTRY)) $(word 2,$(REGISTRY))
 

@@ -102,6 +102,12 @@ update(0, 'Starting WebKit exploit...');
 // the exploits try to avoid.
 var MAX_RETRIES = 3;
 var BACKOFF_SECONDS = [5, 10, 20];
+// The WebKit primitive retries in-page forever by design (a fresh heap layout
+// often just needs another attempt). Every attempt logs a line, which keeps the
+// silence watchdog above from ever firing, so cap the attempts here and spend
+// one page reload on a genuinely fresh heap instead.
+var MAX_WEBKIT_ATTEMPTS = 25;
+var webkitAttemptsCapped = false;
 var RETRY_KEY = 'wamp_rt_count';
 var KERNEL_STATE_KEY = 'wamp_kernel_state';
 var ELF_PARTIAL_KEY = 'wamp_elf_partial';
@@ -541,6 +547,17 @@ function readLine(line) {
   lastLineAt = Date.now();
   if (error) lastErrorAt = Date.now();
   trackPhase(text);
+  // A capped WebKit attempt budget: reload once on a fresh heap instead of
+  // letting the in-page retry loop spin forever (see MAX_WEBKIT_ATTEMPTS).
+  if (!webkitAttemptsCapped && (phase === 'webkit' || phase === 'userland') &&
+      !terminal && reloadTimer === null) {
+    var retryAttempt = /Retry:.*\battempt (\d+)/i.exec(text);
+    if (retryAttempt && Number(retryAttempt[1]) >= MAX_WEBKIT_ATTEMPTS) {
+      webkitAttemptsCapped = true;
+      update(percent, 'WebKit is not settling; reloading for a fresh heap...', 'retry');
+      scheduleReload(5);
+    }
+  }
   if (phase === 'kernel' || phase === 'post') {
     checkDirty(text);
     if (!cleanVerdict) checkCleanVerdict(text);
@@ -617,3 +634,71 @@ var observer = new MutationObserver(function (records) {
   wrapper.scrollTop = wrapper.scrollHeight;
 });
 observer.observe(output, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class'] });
+
+// ===================== payload ELF prefetch =====================
+// Last stop before the module graph boots: the whole UI, the latch and the
+// consent gate are already in place, so the only thing left is the ELF. The
+// chain pages ship it as a sibling AppCache entry instead of ~17 MB of base64
+// inside the HTML -- the page parses in ~1.3 MB and the WebProcess holds the
+// ELF as bytes, not text, while the exploit runs. The fetch must happen
+// before anything touches the kernel, because a network fetch issued after
+// the kernel exploit never returns (the loader documents exactly this for
+// its kexp binaries), and a failed prefetch refuses the boot the same way
+// the latch does: no WebKit run, no kernel contact, nothing armed, nothing
+// to clean up. Pages that embed the ELF (the PC setup host) serve it inline
+// after the exploit and skip this entirely.
+var ELF_FETCH_ATTEMPTS = 3;
+var ELF_FETCH_RETRY_MS = 800;
+
+function autoloadElfName() {
+  try {
+    var payloads = (window.STANDALONE && window.STANDALONE.payloads) || [];
+    for (var i = 0; i < payloads.length; i++) {
+      var entry = payloads[i];
+      if (entry && typeof entry.path === 'string' && /autoload\.js$/.test(entry.path) &&
+          Array.isArray(entry.args) && entry.args[0])
+        return entry.args[0];
+    }
+  } catch (error) {}
+  return null;
+}
+
+function elfEmbeddedInPage(name) {
+  try {
+    return !!(name && window.EMBEDDED_BINARIES && window.EMBEDDED_BINARIES[name]);
+  } catch (error) {
+    return false;
+  }
+}
+
+var elfName = autoloadElfName();
+if (elfName && !elfEmbeddedInPage(elfName)) {
+  var elfBuffer = null;
+  for (var elfAttempt = 1; elfAttempt <= ELF_FETCH_ATTEMPTS && !elfBuffer; elfAttempt++) {
+    try {
+      var elfResponse = await fetch(elfName);
+      if (elfResponse.ok) {
+        var elfCandidate = await elfResponse.arrayBuffer();
+        // The ELF header is checked again in autoload.js before anything is
+        // sent; refusing here keeps a corrupt cache entry from costing a
+        // kernel run that could never deliver its payload.
+        if (elfCandidate.byteLength >= 0x1000 &&
+            new DataView(elfCandidate).getUint32(0, true) === 0x464c457f)
+          elfBuffer = elfCandidate;
+      }
+    } catch (error) {}
+    if (!elfBuffer && elfAttempt < ELF_FETCH_ATTEMPTS) {
+      update(0, 'Loading the payload ELF (' + elfAttempt + '/' + ELF_FETCH_ATTEMPTS + ')...');
+      await new Promise(function (resolve) { setTimeout(resolve, ELF_FETCH_RETRY_MS); });
+    }
+  }
+  if (!elfBuffer) {
+    update(0, 'The payload ELF could not be loaded from the console cache. Nothing has run. ' +
+      'Relaunch the autoloader; if it keeps failing, run the installer from the PC host ' +
+      'once to rebuild the cache.', 'error');
+    throw new Error('payload ELF prefetch failed: ' + elfName);
+  }
+  window.WAMP_PAYLOAD_NAME = elfName;
+  window.WAMP_PAYLOAD_BYTES = elfBuffer;
+  update(0, 'Starting WebKit exploit...');
+}

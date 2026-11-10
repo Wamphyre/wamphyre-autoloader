@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.7.3] - 2026-11-10
+
+### Chain pages and payload hand-off
+
+* **The autoload ELF left the chain pages.** It now ships as a cached
+  sibling (`/app/<version>/wamphyre-autoload.elf`) shared by both chains,
+  instead of ~17 MB of base64 inside each page: the pages parse in ~1.3 MB
+  (was 18.5 MB), the AppCache holds ~15.7 MB instead of 37.3 MB (-58%), and
+  the installer ELF that embeds the registry shrinks accordingly. The page's
+  startup script (`frontend/autoloader/app.js`) prefetches the ELF before
+  the WebKit stage -- a network fetch issued after the kernel exploit never
+  returns -- validates the ELF header, and hands the bytes to
+  `payloads/autoload.js`. A failed prefetch refuses the boot before
+  anything runs, exactly like the kernel-state latch. The PC setup host pages
+  still embed their installer ELF and skip the prefetch.
+* **Zero-copy hand-off to elfldr.** When the payload buffer's backing-store
+  pointer can be proved (four sampled dwords must match the bytes), the
+  autoload payload sends straight from the page heap: no 12.9 MB mapping, no
+  3.2 M write4 calls, 12.9 MB less peak memory during the hand-off. The
+  verified mapping copy remains as the fallback, and the log states which
+  path ran ("zero-copy" / "mapped copy").
+
+### Reliability
+
+* **Relapse's network preflight waits for DHCP.** A console that just booted
+  can lack an interface address for a moment; the preflight now re-checks for
+  up to 2 s (reusing one buffer) before stopping the chain with the precise
+  reason, instead of stopping the whole run on the first look.
+* **The WebKit retry loop is capped.** Every attempt logs a line, which kept
+  the 90 s silence watchdog from ever firing; from attempt 25 the page spends
+  one of its automatic retries on a fresh heap instead of spinning forever.
+
+### Default payload chain
+
+* kstuff-lite v1.11, ShadowMountPlus 1.7beta11 (the latest official release;
+  upstream's 1.7beta12 is still marked prerelease), Payload Manager v0.6.3
+  and the vendored etaHEN (2.6B, ahead of the last public release 2.5B)
+  remain the newest releases at build time.
+
 ## [v0.7.2] - 2026-11-04
 
 ### Default payload chain

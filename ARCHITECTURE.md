@@ -275,8 +275,9 @@ adds inline fetch resources, `--elfldr [URL=]FILE` overrides the loader binary w
 editing generated HTML, and the host builder accepts `--page` and `--name`.
 Its probe verifies embedded file sizes and input digests, including external assets.
 
-The target payload ELF (`ps5-unified-autoloader` for offline autoloader pages, or
-the installer ELF for the PC setup host) is embedded via `--embed`.
+The target payload ELF reaches the page differently per surface: the offline
+chain pages cache it as a sibling resource that `app.js` prefetches before the
+exploit, while the PC setup host pages embed their installer ELF via `--embed`.
 
 ## Offline installation
 
@@ -299,8 +300,17 @@ The cache layout is:
 /app/index.html              stable homescreen pointer
 /app/<version>/poops.html    chain page: elfldr-check.js, poops.js, then autoload.js
 /app/<version>/relapse.html  chain page: elfldr-check.js, relapse.js, then autoload.js
+/app/<version>/wamphyre-autoload.elf  the autoload ELF, cached once and shared by both chains
 /app/<version>/__complete__  version marker, last in CACHE
 ```
+
+The chain pages do not embed the autoload ELF: `frontend/autoloader/app.js`
+(the builder's awaited startup script) prefetches the cached sibling before the
+WebKit stage and hands the bytes to `payloads/autoload.js`, because a network
+fetch issued after the kernel exploit never returns. A failed prefetch refuses
+the boot before anything runs, the same way the kernel-state latch does. The
+PC setup host pages still embed their installer ELF via `--embed` and skip the
+prefetch, since their copy is served inline.
 
 The pointer checks the marker before navigating, then sends the user to the chain
 page they chose, so partial cache downloads cannot start the app. The HTTP server

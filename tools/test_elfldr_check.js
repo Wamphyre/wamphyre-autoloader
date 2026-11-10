@@ -139,6 +139,8 @@ function pointer(low) {
   });
   assert.equal(zeroNet.summary.stopped, true);
   assert(!zeroNet.text.includes('kernel marker'));
+  assert.equal(zeroNet.calls.filter(call => call.nr === 0x7d).length, 10,
+    'an interface without an address must be re-checked within the wait window');
 
   // Relapse chain: an interface carrying an address lets the queue proceed.
   const withNet = await run({
@@ -147,6 +149,8 @@ function pointer(low) {
   });
   assert.equal(withNet.summary.run, 3);
   assert.equal(withNet.summary.failed, 0);
+  assert.equal(withNet.calls.filter(call => call.nr === 0x7d).length, 2,
+    'the wait must stop as soon as an address appears');
   assert(!withNet.summary.stopped);
   assert(withNet.text.includes('A network interface with an address is available for Relapse.'));
 

@@ -20,14 +20,15 @@ const PROBE_RETRY_MS = 400;
 const SYS_NETGETIFLIST = 0x7d;
 const IF_RECORD = 0x3c0;
 const IF_IP = 40;
+// A console that just booted can still be waiting for DHCP. Re-check briefly
+// instead of declaring "no network" on the first look and stopping a chain that
+// would have worked a second later.
+const IFACE_WAIT_ATTEMPTS = 5;
+const IFACE_WAIT_MS = 400;
 
-async function relapseHasInterface(api) {
-  // Without the syscall stub in this firmware's table the check cannot run;
-  // let the exploit decide for itself rather than guess.
-  if (!(api.syscalls && api.syscalls[SYS_NETGETIFLIST])) return true;
+async function interfaceHasAddress(api, list) {
   const count = (await api.chain.syscall(SYS_NETGETIFLIST, 0, 10)).low | 0;
   if (count <= 0 || count > 256) return false;
-  const list = api.p.malloc(IF_RECORD * count, 1);
   if (((await api.chain.syscall(SYS_NETGETIFLIST, list, count)).low | 0) < 0)
     return false;
   for (let i = 0; i < count; i++) {
@@ -35,6 +36,27 @@ async function relapseHasInterface(api) {
     for (let b = 0; b < 4 && !any; b++)
       any = api.p.read1(list.add32(IF_RECORD * i + IF_IP + b)) !== 0;
     if (any) return true;
+  }
+  return false;
+}
+
+async function relapseHasInterface(api) {
+  // Without the syscall stub in this firmware's table the check cannot run;
+  // let the exploit decide for itself rather than guess.
+  if (!(api.syscalls && api.syscalls[SYS_NETGETIFLIST])) return true;
+  // One buffer reused for the whole wait: the check runs right before the
+  // exploit, so it must not churn the WebProcess heap on every attempt.
+  const list = api.p.malloc(IF_RECORD * 256, 1);
+  let announced = false;
+  for (let attempt = 1; attempt <= IFACE_WAIT_ATTEMPTS; attempt++) {
+    if (await interfaceHasAddress(api, list)) return true;
+    if (!announced) {
+      announced = true;
+      await api.log('No network interface has an address yet; waiting up to ' +
+        (IFACE_WAIT_ATTEMPTS - 1) * IFACE_WAIT_MS / 1000 + 's for one...', 'info');
+    }
+    if (attempt < IFACE_WAIT_ATTEMPTS)
+      await new Promise(resolve => setTimeout(resolve, IFACE_WAIT_MS));
   }
   return false;
 }

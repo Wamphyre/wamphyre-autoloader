@@ -21,11 +21,17 @@ async function run(options = {}) {
   const events = [];
   const sent = [];
   const mapped = pointer(0x30000000);
+  const DIRECT_BASE = 0x50000000;
   let next = 0x20000000;
   let connections = 0;
   let closed = 0;
   let unmapped = 0;
   const expectedElf = (options.args && options.args[0]) || 'autoload.elf';
+  function byteAt(address) {
+    if (options.direct && address >= DIRECT_BASE && address < DIRECT_BASE + bytes.length)
+      return bytes[address - DIRECT_BASE];
+    return memory.get(address);
+  }
   const api = {
     // Payload 3: the exploit already ran, so krw is present unless we are
     // testing the case where it did not.
@@ -36,7 +42,18 @@ async function run(options = {}) {
       malloc(size) { const p = pointer(next); next += size; return p; },
       write1(p, n) { memory.set(p.low, n & 255); },
       write4(p, n) { for (let i = 0; i < 4; i++) memory.set(p.low + i, (n >>> (i * 8)) & 255); },
-      read4(p) { return [0, 1, 2, 3].reduce((v, i) => v | (memory.get(p.low + i) << (i * 8)), 0); },
+      read4(p) {
+        return [0, 1, 2, 3].reduce((v, i) => v | ((byteAt(p.low + i) || 0) << (i * 8)), 0) >>> 0;
+      },
+      read8(p) {
+        if (options.direct && p.low === 0x40000010)
+          return { low: options.directBogus ? 0x60000000 : DIRECT_BASE, hi: 0,
+            add32(n) { return pointer(this.low + n); } };
+        return pointer(0);
+      },
+      leakval() {
+        return options.direct ? pointer(0x40000000) : null;
+      },
     },
     chain: { async syscall(n, a, b, c) {
       if (n === 0x61) return pointer(12);
@@ -53,7 +70,7 @@ async function run(options = {}) {
         assert(api.krw, 'the payload must not send an ELF without kernel access');
         if (options.writeFails) return pointer(-1);
         const count = Math.min(c, 113); // Exercise short writes and the final tail.
-        for (let i = 0; i < count; i++) sent.push(memory.get(b.low + i));
+        for (let i = 0; i < count; i++) sent.push(byteAt(b.low + i));
         return pointer(count);
       }
       throw new Error('Unexpected syscall ' + n);
@@ -71,6 +88,14 @@ async function run(options = {}) {
       };
     },
   };
+  // The page's startup script hands the ELF over through window globals;
+  // 'garbage' (no ELF magic) and 'wrongname' must fall back to the fetch.
+  if (options.prefetched) {
+    sandbox.window = {
+      WAMP_PAYLOAD_BYTES: options.prefetched === 'garbage' ? new ArrayBuffer(0x2000) : bytes.buffer,
+      WAMP_PAYLOAD_NAME: options.prefetched === 'wrongname' ? 'some-other.elf' : expectedElf,
+    };
+  }
   vm.createContext(sandbox);
   let error;
   try { await vm.runInContext(`(async function () { ${source}\n})().then(fn => fn(api))`, sandbox); }
@@ -93,6 +118,43 @@ async function run(options = {}) {
   assert.ifError(custom.error);
   assert.deepEqual(custom.sent, [...custom.bytes]);
   assert.deepEqual(custom.events, ['ps5-unified-autoloader-v0.1.5-915a65e.elf', 'map']);
+
+  // Zero-copy hand-off: a proved backing-store pointer sends straight from the
+  // page heap -- no mapping, no 12.9 MB copy, no write4 calls.
+  const direct = await run({ direct: true });
+  assert.ifError(direct.error);
+  assert.deepEqual(direct.sent, [...direct.bytes]);
+  assert.equal(direct.unmapped, 0);
+  assert.deepEqual(direct.events, ['autoload.elf']);
+
+  // An unprovable pointer (four samples do not match) falls back to the copy.
+  const bogus = await run({ direct: true, directBogus: true });
+  assert.ifError(bogus.error);
+  assert.deepEqual(bogus.sent, [...bogus.bytes]);
+  assert.equal(bogus.unmapped, 1);
+  assert.deepEqual(bogus.events, ['autoload.elf', 'map']);
+
+  // Prefetched bytes from the page's startup script: no fetch, same delivery.
+  const prefetched = await run({ prefetched: true });
+  assert.ifError(prefetched.error);
+  assert.deepEqual(prefetched.sent, [...prefetched.bytes]);
+  assert.deepEqual(prefetched.events, ['map'], 'no fetch when the page prefetched the ELF');
+
+  // Prefetched bytes plus a proved pointer: the whole hand-off touches
+  // neither the network nor a mapping.
+  const prefetchedDirect = await run({ prefetched: true, direct: true });
+  assert.ifError(prefetchedDirect.error);
+  assert.deepEqual(prefetchedDirect.sent, [...prefetchedDirect.bytes]);
+  assert.deepEqual(prefetchedDirect.events, []);
+
+  // A stale or corrupt prefetch falls back to the fetch path.
+  for (const mode of ['garbage', 'wrongname']) {
+    const result = await run({ prefetched: mode });
+    assert.ifError(result.error);
+    assert.deepEqual(result.sent, [...result.bytes]);
+    assert.deepEqual(result.events, ['autoload.elf', 'map'],
+      'a bad prefetch must fall back to fetching for ' + mode);
+  }
 
   // No kernel access means nothing is sent at all, and nothing is mapped.
   for (const options of [

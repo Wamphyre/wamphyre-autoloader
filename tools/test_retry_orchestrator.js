@@ -45,6 +45,10 @@ function makePage(options = {}) {
   const intervals = new Map();
   let nextTimerId = 1;
   const store = {};
+  const timeouts = new Map();
+  const fetchCalls = [];
+  const elfBytes = new Uint8Array(0x1000);
+  elfBytes.set([0x7f, 0x45, 0x4c, 0x46]);
   if (options.kernelState) store['wamp_kernel_state'] = options.kernelState;
   if (options.elfPartial) store['wamp_elf_partial'] = '1';
   // The consent default matches a browser session that already confirmed the
@@ -73,8 +77,11 @@ function makePage(options = {}) {
       return nextTimerId++;
     },
     clearInterval(id) { intervals.delete(id); },
-    setTimeout() { throw new Error('unexpected setTimeout in the page script'); },
-    clearTimeout() {},
+    setTimeout(fn, ms) {
+      timeouts.set(nextTimerId, { fn, at: clock + (ms || 0) });
+      return nextTimerId++;
+    },
+    clearTimeout(id) { timeouts.delete(id); },
     sessionStorage: {
       getItem: (key) => (Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null),
       setItem: (key, value) => { store[key] = String(value); },
@@ -87,6 +94,27 @@ function makePage(options = {}) {
         // A real reload navigates away and no timer ever fires again.
         dead = true;
       },
+    },
+    DataView, Uint8Array, ArrayBuffer,
+    // The builder emits these before the startup scripts run; the defaults
+    // describe a split chain page whose autoload ELF is a cache sibling.
+    STANDALONE: options.standalone !== undefined ? options.standalone : {
+      payloadCount: 3,
+      payloadNames: ['elfldr-check.js', 'relapse.js', 'autoload.js'],
+      payloads: [
+        { name: 'elfldr-check.js', path: '/repo/payloads/elfldr-check.js', args: ['relapse'] },
+        { name: 'relapse.js', path: '/repo/payloads/relapse.js', args: [] },
+        { name: 'autoload.js', path: '/repo/payloads/autoload.js', args: ['wamphyre-autoload.elf'] },
+      ],
+    },
+    EMBEDDED_BINARIES: options.embeddedBinaries,
+    fetch: async (path) => {
+      fetchCalls.push(String(path));
+      if (options.elfFetch === 'fail') return { ok: false, arrayBuffer: async () => new ArrayBuffer(4) };
+      if (options.elfFetch === 'reject') throw new Error('network error');
+      if (options.elfFetch === 'garbage')
+        return { ok: true, arrayBuffer: async () => new ArrayBuffer(0x2000) };
+      return { ok: true, arrayBuffer: async () => elfBytes.buffer.slice(0) };
     },
   };
   sandbox.window = sandbox;
@@ -119,6 +147,12 @@ function makePage(options = {}) {
     const end = clock + ms;
     while (clock < end) {
       clock += Math.min(250, end - clock);
+      for (const [id, entry] of [...timeouts]) {
+        if (entry.at <= clock) {
+          timeouts.delete(id);
+          entry.fn();
+        }
+      }
       for (const [id, entry] of [...intervals]) {
         if (entry.next <= clock) {
           entry.next += entry.ms;
@@ -171,6 +205,9 @@ function makePage(options = {}) {
     setElfPartial(n) { if (n === null) delete store['wamp_elf_partial']; else store['wamp_elf_partial'] = String(n); },
     kernelState: () => store['wamp_kernel_state'] || null,
     bootRefused: () => bootRefused,
+    fetches: () => fetchCalls.slice(),
+    payloadElf: () => sandbox.WAMP_PAYLOAD_BYTES || null,
+    payloadElfName: () => sandbox.WAMP_PAYLOAD_NAME || null,
   };
 }
 
@@ -293,6 +330,22 @@ function runSuccessFlow(page) {
     page.tick(88000);
     assert.equal(page.reloadCalls(), 0, 'the watchdog must wait');
     page.tick(20000);
+    assert.equal(page.reloadCalls(), 1);
+    assert.equal(page.retries(), '1');
+  }
+
+  // 6b. The WebKit retry loop is capped: 25 in-page attempts spend one page
+  // retry on a fresh heap instead of spinning forever.
+  {
+    const page = makePage();
+    page.say('[*] Starting WebKit exploit');
+    for (let attempt = 1; attempt <= 24; attempt++)
+      page.say('Retry: Heap placement failed attempt ' + attempt, 'log');
+    page.tick(10000);
+    assert.equal(page.reloadCalls(), 0, 'the budget must not fire before the cap');
+    page.say('Retry: Heap placement failed attempt 25', 'log');
+    assert.match(page.label(), /automatic retry 1 of 3/);
+    page.tick(6000);
     assert.equal(page.reloadCalls(), 1);
     assert.equal(page.retries(), '1');
   }
@@ -744,6 +797,70 @@ function runSuccessFlow(page) {
     assert.match(page.label(), /ELF loader already running/,
       'without a partial hand-over the message stays the classic one');
     assert.equal(page.state(), 'done');
+  }
+
+  // 32. The payload ELF prefetch: a split chain page fetches its autoload ELF
+  // before the WebKit stage and hands the bytes to autoload.js, so the
+  // payload never needs a network fetch after the kernel exploit.
+  {
+    const page = makePage();
+    await page.startup;
+    assert.equal(page.bootRefused(), null);
+    assert.deepEqual(page.fetches(), ['wamphyre-autoload.elf']);
+    assert.equal(page.payloadElfName(), 'wamphyre-autoload.elf');
+    assert.ok(page.payloadElf() instanceof ArrayBuffer);
+    assert.equal(page.payloadElf().byteLength, 0x1000);
+  }
+
+  // 33. An embedded page (the PC setup host) skips the prefetch entirely:
+  // its ELF is served inline after the exploit, exactly as before.
+  {
+    const page = makePage({ embeddedBinaries: { 'wamphyre-autoload.elf': 'aGVsbG8=' } });
+    await page.startup;
+    assert.equal(page.bootRefused(), null);
+    assert.deepEqual(page.fetches(), [], 'an embedded ELF must not be fetched over the network');
+    assert.equal(page.payloadElf(), null);
+  }
+
+  // 34. A page without an autoload payload never prefetches anything.
+  {
+    const page = makePage({ standalone: { payloadCount: 2, payloadNames: ['elfldr-check.js', 'relapse.js'], payloads: [
+      { name: 'elfldr-check.js', path: '/repo/payloads/elfldr-check.js', args: ['relapse'] },
+      { name: 'relapse.js', path: '/repo/payloads/relapse.js', args: [] },
+    ] } });
+    await page.startup;
+    assert.equal(page.bootRefused(), null);
+    assert.deepEqual(page.fetches(), []);
+  }
+
+  // 35. A failed prefetch refuses the boot BEFORE the WebKit stage: no kernel
+  // contact, no retry countdown, and the display says what to do. Three
+  // attempts are made first, so a transient cache hiccup still boots.
+  for (const mode of ['fail', 'reject', 'garbage']) {
+    const page = makePage({ elfFetch: mode });
+    // Each attempt waits on a timer, and the next fetch only starts once the
+    // previous rejection has unwound: advance the fake clock and let the
+    // promise chain run, one attempt per round.
+    for (let step = 0; step < 12 && !page.bootRefused(); step++) {
+      page.tick(1000);
+      await new Promise(resolve => setImmediate(resolve));
+    }
+    await page.startup;
+    assert(page.bootRefused(), 'a broken ELF cache entry must refuse the boot for ' + mode);
+    assert.equal(page.fetches().length, 3, 'three attempts for ' + mode);
+    assert.match(page.label(), /could not be loaded from the console cache/);
+    assert.equal(page.state(), 'error');
+    assert.equal(page.reloadCalls(), 0, 'a refusal must not schedule a reload');
+    assert.equal(page.retries(), null);
+    assert.equal(page.kernelState(), null, 'nothing touched the kernel');
+  }
+
+  // 36. The dirty latch still refuses instantly, without spending a fetch.
+  {
+    const page = makePage({ kernelState: 'dirty', elfFetch: 'fail' });
+    await page.startup;
+    assert(page.bootRefused());
+    assert.deepEqual(page.fetches(), [], 'the latch fires before the prefetch');
   }
 
   console.log('Retry orchestrator checks passed: clean failures auto-retry within budget, dirty failures demand a reboot, the pre-kernel watchdog recovers a wedged page, the kernel phase is never interrupted, the kernel-state latch gates every reload, a kernel-phase failure needs an explicit clean verdict to be retryable, the launch consent gate asks before anything runs, and an already-running loader after a failed hand-over tells the truth.');
