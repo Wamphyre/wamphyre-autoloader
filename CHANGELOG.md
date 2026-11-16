@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.7.4] - 2026-11-16
+
+### Default payload chain
+
+* **ShadowMountPlus updated to 1.7beta12** (published 2026-11-08, now a
+  regular release rather than a pre-release). On top of beta11 it adds the
+  configuration format v2 (separate `config.ini` and `profiles.ini`, automatic
+  migration and runtime reloads), safer mount and launch recovery with cleaner
+  sandbox-layer teardown and M.2 storage handling, library scans that tolerate
+  inaccessible folders and source changes, improved metadata/filename handling
+  for PS4 trophies, `sce_sys` files and dynamic libraries, browser back
+  navigation, an option to disable startup library notifications, and better
+  support for long image mount paths.
+* kstuff-lite v1.11, Payload Manager v0.6.3 and the vendored etaHEN remain
+  unchanged: no newer official release exists for any of them (kstuff-lite's
+  13.60 fixes on `main` and its `1.12` branch are still unreleased, and etaHEN's
+  GitHub release is still 2.5B).
+
 ## [v0.7.3] - 2026-11-10
 
 ### Chain pages and payload hand-off
