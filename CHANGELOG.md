@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.7.5] - 2026-11-26
+
+### Default payload chain
+
+* **kstuff updated to drakmor's `kstuff-1.15-dr-test3-stable`**, replacing
+  kstuff-lite v1.11. This 1.15 DR test build adds the PPR/resume work, fPKG
+  scope patches and 13.60 offsets, and community testing reports Rest Mode
+  working. It is the first chain payload, as before.
+* **kstuff is now vendored, like etaHEN.** The build no longer downloads
+  kstuff-lite from GitHub: the binary lives at
+  `payloads/default/kstuff-1.15-dr-test3-stable.elf` (SHA-256 pinned and
+  verified by `tools/download_deps.sh`) and is embedded from that copy.
+  drakmor shared this build through the scene rather than as a tagged GitHub
+  release, so vendoring keeps builds reproducible and offline. See
+  `payloads/default/kstuff-VENDOR.md` for provenance and update steps, and
+  `README.md` / `ARCHITECTURE.md` for the chain and build notes.
+* ShadowMountPlus 1.7beta12, Payload Manager v0.6.3 and the vendored etaHEN
+  remain unchanged.
+
 ## [v0.7.4] - 2026-11-16
 
 ### Default payload chain

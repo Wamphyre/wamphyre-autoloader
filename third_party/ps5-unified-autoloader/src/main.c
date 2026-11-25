@@ -8,7 +8,7 @@
  *   4. Wait for elfldr to be ready on port 9021
  *   5. Scan USB0-7, then /data for autoload.txt
  *   6a. If found: iterate lines, launch each .elf from the config directory
- *   6b. If not found: run the default chain (kstuff-lite, ShadowMountPlus,
+ *   6b. If not found: run the default chain (kstuff, ShadowMountPlus,
  *       etaHEN with its config ensured) and then Payload Manager
  */
 

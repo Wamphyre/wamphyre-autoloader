@@ -2,7 +2,7 @@
  * default_chain.h — the built-in payload chain for unconfigured consoles
  *
  * When no autoload.txt is found, the autoloader does not stop at Payload
- * Manager: it first launches the default chain (kstuff-lite, ShadowMountPlus,
+ * Manager: it first launches the default chain (kstuff, ShadowMountPlus,
  * etaHEN with its config ensured) and then starts Payload Manager as the
  * manager UI, mirroring what a configured console would load from its own
  * autoload.txt.

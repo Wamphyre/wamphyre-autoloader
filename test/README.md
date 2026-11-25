@@ -1,8 +1,8 @@
 # test/ — experimentation area (not a build input)
 
 This folder carries **wamphyre experiment trees**. Nothing here is used to
-build wamphyre-autoloader: the release chain keeps fetching the official
-kstuff-lite release at build time (`tools/download_deps.sh`). These trees
+build wamphyre-autoloader: the release chain embeds the vendored kstuff in
+`payloads/default/` (`tools/download_deps.sh` only stages it). These trees
 exist for manual hardware testing and local experimentation only. Expect
 them to be behind or ahead of upstream at any time.
 

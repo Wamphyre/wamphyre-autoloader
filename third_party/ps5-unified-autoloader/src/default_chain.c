@@ -3,7 +3,7 @@
  *
  * Runs when no autoload.txt exists: ensure etaHEN has a config (built-in
  * FTP on port 1337, FPS meter off — an existing config is never touched),
- * launch kstuff-lite, ShadowMountPlus and etaHEN with a fixed delay
+ * launch kstuff 1.15-dr-test3, ShadowMountPlus and etaHEN with a fixed delay
  * between them, then start Payload Manager as the manager UI.
  */
 
@@ -71,7 +71,7 @@ int run_default_chain(void) {
     /* Automatic storage: the array is initialised from the extern symbols,
      * which C only allows for run-time (non-static) initialisers. */
     const struct chain_entry chain[] = {
-        { "kstuff-lite", kstuff_elf, kstuff_elf_len },
+        { "kstuff 1.15-dr-test3", kstuff_elf, kstuff_elf_len },
         { "ShadowMountPlus", smp_elf, smp_elf_len },
         { "etaHEN", etahen_elf, etahen_elf_len },
     };

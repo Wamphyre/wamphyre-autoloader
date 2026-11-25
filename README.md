@@ -11,10 +11,12 @@
 
 **Nothing to configure by default.** With no `autoload.txt` anywhere, the autoloader boots a built-in chain, each step spaced 5 seconds apart:
 
-1. **kstuff-lite** — always the latest release from [EchoStretch/kstuff-lite](https://github.com/EchoStretch/kstuff-lite), built in at build time
+1. **kstuff 1.15-dr-test3-stable** — drakmor's Kstuff Lite test build (fPKG support reaching 13.60; testers report Rest Mode working), vendored in this repository like etaHEN
 2. **ShadowMountPlus** — always the latest release from [drakmor/ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus), built in at build time
 3. **etaHEN** — vendored in this repository, with its config template installed on first run (built-in **FTP on port 1337** and the app jailbreak homebrew apps need)
 4. **[Payload Manager](https://github.com/itsPLK/ps5-payload-manager)** — as the manager UI for everything else
+
+kstuff and etaHEN are **vendored binaries**: their exact bytes are committed and embedded at build time, so rebuilding does not silently pick up a different payload. kstuff's provenance, SHA-256 and update steps are documented in [`payloads/default/kstuff-VENDOR.md`](payloads/default/kstuff-VENDOR.md).
 
 If you prefer your own chain, drop an `autoload.txt` (see below) — creating one always takes over completely.
 
@@ -46,15 +48,16 @@ When a config is found, it replaces the default chain completely, and Payload Ma
 <Summary><i>ShadowMountPlus recommends against etaHEN — why does the chain include it?</i></Summary>
 
 * **The upstream note is about etaHEN's own kstuff, not about etaHEN itself
-  — and not about the chain's kstuff-lite.** Two different projects share the
-  "kstuff" name: the chain ships kstuff-lite, while etaHEN embeds the full
-  kstuff project (`etaHEN/kstuff`, a fork of `EchoStretch/kstuff`) with its
-  own pause/unpause handling. SMP 1.7 dropped its legacy kstuff auto-pause
-  and delay autotuning, and its author warns that etaHEN's bundled kstuff
-  collides with the modern kstuff lifecycle SMP expects.
+  — and not about the chain's kstuff.** Two different projects share the
+  "kstuff" name: the chain ships drakmor's Kstuff Lite 1.15 DR build, while
+  etaHEN embeds the full kstuff project (`etaHEN/kstuff`, a fork of
+  `EchoStretch/kstuff`) with its own pause/unpause handling. SMP 1.7 dropped
+  its legacy kstuff auto-pause and delay autotuning, and its author warns that
+  etaHEN's bundled kstuff collides with the modern kstuff lifecycle SMP
+  expects.
 * **The config template removes exactly that conflict.** etaHEN is
   installed with `[kstuff] autoload=false`, so its embedded kstuff never
-  loads: the only kstuff running is the kstuff-lite the chain sent first.
+  loads: the only kstuff running is the 1.15 DR build the chain sent first.
 * **Nothing else in the chain provides what etaHEN does.** The app
   jailbreak is what makes homebrew apps actually work (PKGi, the Homebrew
   Store, the Lapy daemon and friends), plus the FTP server on port 1337
@@ -168,8 +171,8 @@ tar xf libmicrohttpd-1.0.1.tar.gz && cd libmicrohttpd-1.0.1
 make install && cd ..
 
 # 3. Build everything. payload-deps fetches the pinned elfldr and Payload
-#    Manager plus the LATEST kstuff-lite and ShadowMountPlus, and the unified
-#    autoloader ELF is built locally to embed the default chain (etaHEN is
+#    Manager plus the LATEST ShadowMountPlus, and the unified autoloader ELF
+#    is built locally to embed the default chain (kstuff and etaHEN are
 #    vendored in payloads/default/).
 BUILD_TYPE=stable make all
 ```
@@ -182,8 +185,8 @@ Run `make test` for the offline checks, `make page` to regenerate the chain page
 * **[jordyidk](https://github.com/jordyidk)** & contributors — [slopkit (Poops)](https://github.com/jordyidk/slopkit)
 * **[soniciso1](https://github.com/soniciso1)**, **[ntfargo](https://github.com/ntfargo)** & contributors — [Relapse](https://github.com/soniciso1/relapse)
 * **[PS5Dev](https://github.com/PS5Dev)** & contributors — [Byepervisor Reborn](https://github.com/PS5Dev/Byepervisor-Reborn) (13.60 hypervisor unlock; source vendored under `third_party/byepervisor-reborn/`, not shipped in the chain — see its `WAMPHYRE_VENDOR_NOTE.md`); the S3-resume hypervisor bug was discovered by **[theflow0](https://x.com/theflow0)**
-* **[EchoStretch](https://github.com/EchoStretch)** & contributors — [kstuff-lite](https://github.com/EchoStretch/kstuff-lite) (default chain)
-* **[drakmor](https://github.com/drakmor)** & contributors — [ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus) (default chain)
+* **[EchoStretch](https://github.com/EchoStretch)** & contributors — [kstuff-lite](https://github.com/EchoStretch/kstuff-lite), the base of the default chain's kstuff
+* **[drakmor](https://github.com/drakmor)** & contributors — [kstuff-lite 1.15 DR](https://github.com/drakmor/kstuff-lite) (vendored default-chain build) and [ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus) (default chain)
 * The etaHEN authors & contributors — etaHEN (vendored for the default chain)
 * **[john-tornblom](https://github.com/john-tornblom)** — [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk/)
 * Everyone else contributing to the PS5 homebrew scene.

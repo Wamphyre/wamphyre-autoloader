@@ -17,11 +17,15 @@ PLDMGR_REPO="itsPLK/ps5-payload-manager"
 PLDMGR_TAG="v0.6.3"
 PLDMGR_DEST="$ROOT/build/deps/pldmgr.elf"
 
-# Default-chain payloads (no autoload.txt): always the latest official release.
-# kstuff-lite's release asset is named kstuff.elf — this is not the separate
-# full kstuff project of the etaHEN lineage.
-KSTUFF_REPO="EchoStretch/kstuff-lite"
-KSTUFF_DEST="$ROOT/build/deps/kstuff.elf"
+# Default-chain kstuff (no autoload.txt): vendored, like etaHEN. drakmor's
+# 1.15-dr-test3-stable build is a test binary shared through the scene
+# (Discord), not a tagged GitHub release, so it is committed under
+# payloads/default/ to keep builds reproducible and offline.
+KSTUFF_VENDORED="$ROOT/payloads/default/kstuff-1.15-dr-test3-stable.elf"
+KSTUFF_SHA256="6c3758c2cc84e3aa7e3c41952371fd04e641647d46d03f8d4bea2ab77c16ecf5"
+
+# ShadowMountPlus is the only default-chain payload still fetched as a
+# release: always the latest official one, by design.
 SMP_REPO="drakmor/ShadowMountPlus"
 SMP_DEST="$ROOT/build/deps/shadowmountplus.elf"
 
@@ -147,9 +151,9 @@ PY
 }
 
 # Always the LATEST official release — no tag pinning, by design: the chain
-# must carry the newest kstuff-lite and ShadowMountPlus the maintainers
-# published. The sidecar caches the tag that was current at download time so
-# an up-to-date copy is not re-fetched, and any newer release replaces it.
+# must carry the newest ShadowMountPlus the maintainers published. The sidecar
+# caches the tag that was current at download time so an up-to-date copy is
+# not re-fetched, and any newer release replaces it.
 download_latest() {
     local repo="$1" dest="$2"
     python3 - "$repo" "$dest" <<'PY'
@@ -271,9 +275,25 @@ if [ ! -d "$PLDMGR_SUBMODULE" ]; then
     exit 1
 fi
 
+if [ ! -f "$KSTUFF_VENDORED" ]; then
+    echo "Error: vendored kstuff is missing ($KSTUFF_VENDORED)."
+    exit 1
+fi
+python3 - "$KSTUFF_VENDORED" "$KSTUFF_SHA256" <<'PY'
+import hashlib
+import sys
+
+path, expected = sys.argv[1], sys.argv[2]
+actual = hashlib.sha256(open(path, "rb").read()).hexdigest()
+if actual != expected:
+    print(f"Error: vendored kstuff sha256 mismatch (got {actual}, expected {expected}).",
+          file=sys.stderr)
+    sys.exit(1)
+print(f"vendored kstuff verified ({expected}).")
+PY
+
 download_release "$ELFLDR_REPO" "$ELFLDR_TAG" "$ELFLDR_DEST"
 download_release "$PLDMGR_REPO" "$PLDMGR_TAG" "$PLDMGR_DEST"
-download_latest "$KSTUFF_REPO" "$KSTUFF_DEST"
 download_latest "$SMP_REPO" "$SMP_DEST"
 
 # Stage the default chain for the unified autoloader build: canonical
@@ -282,7 +302,7 @@ download_latest "$SMP_REPO" "$SMP_DEST"
 STAGE="$ROOT/third_party/ps5-unified-autoloader/payloads"
 mkdir -p "$STAGE"
 stage() { cmp -s "$1" "$2" 2>/dev/null || cp "$1" "$2"; }
-stage "$KSTUFF_DEST" "$STAGE/kstuff.elf"
+stage "$KSTUFF_VENDORED" "$STAGE/kstuff.elf"
 stage "$SMP_DEST" "$STAGE/smp.elf"
 stage "$ROOT/payloads/default/etaHEN.elf" "$STAGE/etahen.elf"
 stage "$ROOT/payloads/default/etaHEN-config.ini" "$STAGE/etahen-config.ini"

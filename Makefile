@@ -48,8 +48,8 @@ ICONS := assets/icon0.png assets/icon.ico
 INSTALLER_LOGO := frontend/installer-page/logo.svg
 HOST_PAYLOAD ?= $(ELF)
 # Vendored ps5-unified-autoloader sources; the ELF is built locally so the
-# default chain (kstuff-lite, ShadowMountPlus, etaHEN, Payload Manager) is
-# embedded from the freshly downloaded payloads.
+# default chain (kstuff, ShadowMountPlus, etaHEN, Payload Manager) is embedded
+# from the vendored kstuff/etaHEN and the freshly downloaded SMP/pldmgr.
 UNIFIED := third_party/ps5-unified-autoloader
 AUTOLOAD_ELF := build/deps/autoload.elf
 AUTOLOAD_PAYLOAD_VIRTUAL ?= wamphyre-autoload.elf
@@ -95,9 +95,9 @@ payload-deps:
 
 # The unified autoloader ELF is built from the vendored sources against the
 # local PS5 payload SDK. Its default chain embeds the payloads that
-# payload-deps staged: kstuff-lite and ShadowMountPlus (latest official
-# releases), the vendored etaHEN with its config template, and Payload
-# Manager as the manager UI.
+# payload-deps staged: the vendored kstuff 1.15-dr-test3-stable and etaHEN
+# with its config template, ShadowMountPlus (latest official release), and
+# Payload Manager as the manager UI.
 autoload-elf: payload-deps
 	$(MAKE) -C $(UNIFIED) SDK="$(SDK)"
 	cp $(UNIFIED)/autoloader.elf $(AUTOLOAD_ELF)

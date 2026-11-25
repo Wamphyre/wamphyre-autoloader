@@ -228,18 +228,23 @@ keeps appearance changes in CSS/JS files here instead of rewriting generated HTM
 or changing the exploit sources.
 
 `tools/download_deps.sh` downloads the pinned itsPLK elfldr and Payload Manager
-release assets plus the **latest** kstuff-lite and ShadowMountPlus releases,
-caching verified digest sidecars in `build/deps/` for offline rebuilds, then
-stages the default chain under `third_party/ps5-unified-autoloader/payloads/`.
-`build/deps/kstuff.elf` is a naming artefact: the file **is** kstuff-lite,
-whose own release asset is literally named `kstuff.elf`. It is never the
-separate full kstuff project of the etaHEN lineage (`etaHEN/kstuff`, forked
-from `EchoStretch/kstuff`) — the chain ships kstuff-lite and only kstuff-lite.
-The unified autoloader ELF is **built locally** (`make autoload-elf`) from the
-vendored sources — it is no longer downloaded from an upstream release — so it
-can embed the default chain: latest kstuff-lite and ShadowMountPlus, the
-vendored etaHEN (`payloads/default/`) with its config template, and Payload
-Manager as the manager UI. Native stability hardening in the fork's copy:
+release assets plus the **latest** ShadowMountPlus release, caching verified
+digest sidecars in `build/deps/` for offline rebuilds. kstuff and etaHEN are
+**vendored** under `payloads/default/` instead: etaHEN has no public release
+binary, and the default chain now ships drakmor's `kstuff-1.15-dr-test3-stable.elf`,
+a test build distributed outside GitHub Releases. The script verifies the
+vendored kstuff's pinned SHA-256, then stages everything under
+`third_party/ps5-unified-autoloader/payloads/` (the staged kstuff keeps the
+canonical `kstuff.elf` name the embedder derives symbols from). See
+`payloads/default/kstuff-VENDOR.md` for provenance, hash and update steps.
+This kstuff is still the **kstuff-lite** lineage (drakmor's 1.15 DR build), not
+the separate full kstuff project embedded by etaHEN (`etaHEN/kstuff`, forked
+from `EchoStretch/kstuff`); etaHEN's own kstuff stays disabled by the config
+template. The unified autoloader ELF is **built locally** (`make autoload-elf`)
+from the vendored sources — it is no longer downloaded from an upstream release
+— so it can embed the default chain: vendored kstuff and etaHEN with its config
+template, latest ShadowMountPlus, and Payload Manager as the manager UI. Native
+stability hardening in the fork's copy:
 every payload send to elfldr carries a 30 s `SO_SNDTIMEO` (elfldr's
 exact-length `MSG_WAITALL` reads would otherwise let a stalled delivery block
 the chain forever, and the closing of a timed-out socket is what makes elfldr

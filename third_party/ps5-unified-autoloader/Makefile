@@ -39,11 +39,11 @@ all: $(ELF)
 #
 # The default chain (no autoload.txt) embeds these files. They are staged
 # into payloads/ by the parent repository's payload-deps target before this
-# Makefile runs: kstuff-lite and ShadowMountPlus are fetched from their
-# official release repositories at build time, etaHEN and its config
-# template are vendored in the parent repo, and Payload Manager is pinned
-# to an official release. Each file becomes its own translation unit so
-# the compiler never holds every array in one pass.
+# Makefile runs: kstuff and etaHEN (with its config template) are vendored
+# in the parent repo, ShadowMountPlus is fetched from its official release
+# repository at build time, and Payload Manager is pinned to an official
+# release. Each file becomes its own translation unit so the compiler never
+# holds every array in one pass.
 # -----------------------------------------------------------------------
 DEFAULT_DIR  ?= payloads
 PLDMGR_ELF   := $(DEFAULT_DIR)/pldmgr.elf
