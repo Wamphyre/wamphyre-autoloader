@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.7.6] - 2026-11-28
+
+### Default payload chain
+
+* **kstuff updated to drakmor's `kstuff-1.15-dr-test4`**, replacing the
+  `1.15-dr-test3-stable` build. The new test build targets native fPKG
+  support from 12.xx through 13.60, fixes the FPKG issues reported on 12.xx,
+  and includes further stability work. It remains the first payload in the
+  chain.
+* **The vendored binary was refreshed.** `payloads/default/` now carries
+  `kstuff-1.15-dr-test4.elf`; `tools/download_deps.sh` verifies its pinned
+  SHA-256 before staging it, so builds stay reproducible and offline. See
+  `payloads/default/kstuff-VENDOR.md` for provenance and update steps.
+* ShadowMountPlus 1.7beta12, Payload Manager v0.6.3 and the vendored etaHEN
+  remain unchanged.
+
 ## [v0.7.5] - 2026-11-26
 
 ### Default payload chain

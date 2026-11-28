@@ -231,7 +231,7 @@ or changing the exploit sources.
 release assets plus the **latest** ShadowMountPlus release, caching verified
 digest sidecars in `build/deps/` for offline rebuilds. kstuff and etaHEN are
 **vendored** under `payloads/default/` instead: etaHEN has no public release
-binary, and the default chain now ships drakmor's `kstuff-1.15-dr-test3-stable.elf`,
+binary, and the default chain now ships drakmor's `kstuff-1.15-dr-test4.elf`,
 a test build distributed outside GitHub Releases. The script verifies the
 vendored kstuff's pinned SHA-256, then stages everything under
 `third_party/ps5-unified-autoloader/payloads/` (the staged kstuff keeps the

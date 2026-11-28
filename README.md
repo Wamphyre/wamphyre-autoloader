@@ -11,7 +11,7 @@
 
 **Nothing to configure by default.** With no `autoload.txt` anywhere, the autoloader boots a built-in chain, each step spaced 5 seconds apart:
 
-1. **kstuff 1.15-dr-test3-stable** — drakmor's Kstuff Lite test build (fPKG support reaching 13.60; testers report Rest Mode working), vendored in this repository like etaHEN
+1. **kstuff 1.15-dr-test4** — drakmor's Kstuff Lite test build (native fPKG support from 12.xx through 13.60, plus stability fixes), vendored in this repository like etaHEN
 2. **ShadowMountPlus** — always the latest release from [drakmor/ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus), built in at build time
 3. **etaHEN** — vendored in this repository, with its config template installed on first run (built-in **FTP on port 1337** and the app jailbreak homebrew apps need)
 4. **[Payload Manager](https://github.com/itsPLK/ps5-payload-manager)** — as the manager UI for everything else

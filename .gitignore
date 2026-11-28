@@ -3,7 +3,7 @@
 *.bin
 *.o
 # Vendored default-chain payloads are repo assets, not build outputs: etaHEN
-# has no public release binary, and kstuff 1.15-dr-test3-stable is a test build
+# has no public release binary, and kstuff 1.15-dr-test4 is a test build
 # distributed outside GitHub Releases. The default chain builds from these copies.
 !payloads/default/*.elf
 

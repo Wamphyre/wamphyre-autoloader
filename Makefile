@@ -95,7 +95,7 @@ payload-deps:
 
 # The unified autoloader ELF is built from the vendored sources against the
 # local PS5 payload SDK. Its default chain embeds the payloads that
-# payload-deps staged: the vendored kstuff 1.15-dr-test3-stable and etaHEN
+# payload-deps staged: the vendored kstuff 1.15-dr-test4 and etaHEN
 # with its config template, ShadowMountPlus (latest official release), and
 # Payload Manager as the manager UI.
 autoload-elf: payload-deps

@@ -1,12 +1,12 @@
-# Wamphyre vendor note — kstuff 1.15-dr-test3-stable
+# Wamphyre vendor note — kstuff 1.15-dr-test4
 
-`kstuff-1.15-dr-test3-stable.elf` is **vendored as a binary**, like
+`kstuff-1.15-dr-test4.elf` is **vendored as a binary**, like
 `etaHEN.elf` in this directory. It is not downloaded at build time.
 
 ## What it is
 
-- **Payload:** Kstuff Lite 1.15, drakmor's `dr-test3` stable build (the ELF
-  prints `Welcome To Kstuff Lite 1.15-dr-test3`).
+- **Payload:** Kstuff Lite 1.15, drakmor's `dr-test4` test build (the ELF
+  prints `Welcome To Kstuff Lite 1.15-dr-test4`).
 - **Author:** [drakmor](https://github.com/drakmor), on top of
   [EchoStretch/kstuff-lite](https://github.com/EchoStretch/kstuff-lite) and
   the wider kstuff work by sleirsgoevy, zecoxao, flatz, idlesauce and others.
@@ -17,25 +17,31 @@
 - **Build traits visible in the ELF:** PPR/resume handling, fPKG scope
   patches, `.ffpkg` support, and 13.60 offset handling.
 
+## What changed in dr-test4
+
+Community release coverage describes `dr-test4` as targeting **native fPKG
+support from 12.xx through 13.60**, fixing the FPKG failures seen with earlier
+1.15 DR test builds and adding stability work
+([ONE Jailbreak](https://onejailbreak.com/blog/kstuff-test-4-for-12-xx-fpkg-testing/)).
+
+This is still a **test build**. Rest Mode behavior has varied across the 1.15
+DR line, so validate suspend/resume on your console before relying on it.
+
 ## Provenance
 
-drakmor published this build as a test binary through the scene (Discord),
-not as a GitHub release: at vendoring time `drakmor/kstuff-lite`'s newest
-tagged release was still `1.2-dr-test2`. Community testing reported that
-Rest Mode works with this build, and the GBAtemp PS5 guide lists the 1.15 DR
-line for fPKG use on 12.00&ndash;13.60
-([post](https://gbatemp.net/threads/ps5-exploit-guide.613891/post-10955190)).
-
-Because a Discord attachment is not a stable, versioned source, the binary is
-committed here so every build of this repository embeds the same bytes and
+drakmor published this build as a test binary through the scene
+(Discord/MediaFire), not as a GitHub release: at vendoring time
+`drakmor/kstuff-lite`'s newest tagged release was still `1.2-dr-test2`.
+Because a transient attachment is not a stable, versioned source, the binary
+is committed here so every build of this repository embeds the same bytes and
 still works offline.
 
 ## Integrity
 
 ```
-file:    kstuff-1.15-dr-test3-stable.elf
+file:    kstuff-1.15-dr-test4.elf
 size:    1,927,240 bytes
-sha256:  6c3758c2cc84e3aa7e3c41952371fd04e641647d46d03f8d4bea2ab77c16ecf5
+sha256:  2acac07e93192856f15cf9dcac645c821ea20c9d2a75438ebcfd988f739828be
 ```
 
 `tools/download_deps.sh` verifies this hash before staging the binary as

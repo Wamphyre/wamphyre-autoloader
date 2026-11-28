@@ -18,11 +18,11 @@ PLDMGR_TAG="v0.6.3"
 PLDMGR_DEST="$ROOT/build/deps/pldmgr.elf"
 
 # Default-chain kstuff (no autoload.txt): vendored, like etaHEN. drakmor's
-# 1.15-dr-test3-stable build is a test binary shared through the scene
-# (Discord), not a tagged GitHub release, so it is committed under
-# payloads/default/ to keep builds reproducible and offline.
-KSTUFF_VENDORED="$ROOT/payloads/default/kstuff-1.15-dr-test3-stable.elf"
-KSTUFF_SHA256="6c3758c2cc84e3aa7e3c41952371fd04e641647d46d03f8d4bea2ab77c16ecf5"
+# 1.15-dr-test4 build is a test binary shared through the scene (Discord),
+# not a tagged GitHub release, so it is committed under payloads/default/
+# to keep builds reproducible and offline.
+KSTUFF_VENDORED="$ROOT/payloads/default/kstuff-1.15-dr-test4.elf"
+KSTUFF_SHA256="2acac07e93192856f15cf9dcac645c821ea20c9d2a75438ebcfd988f739828be"
 
 # ShadowMountPlus is the only default-chain payload still fetched as a
 # release: always the latest official one, by design.
